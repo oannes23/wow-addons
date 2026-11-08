@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: QuestTrackerSort
+## Notes: Reorders the Quests tracker by distance or level (lowest first)
+## Author: oannes23
+## Version: 1.0.0
+## X-Website: https://github.com/oannes23/wow-addons/tree/main/addons/QuestTrackerSort
+## X-License: GPL-3.0-or-later
+## IconTexture: Interface\Icons\INV_Misc_Map_01
+## SavedVariables: QuestTrackerSortDB
+## AddonCompartmentFunc: QuestTrackerSort_OnCompartmentClick
+
+Locales\enUS.lua
+Sort.lua
+UI.lua
+Core.lua

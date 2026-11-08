@@ -1,0 +1,65 @@
+# Auction house and economy (Forever)
+
+Researched 2026-11-08: three research agents, plus a direct check of the API sources. Confidence key as in [forever-platform.md](forever-platform.md). [REPORTED] = community or press sources, not Blizzard documentation. Source paths are relative to `reference/upstream/wow-ui-source/Interface/AddOns/` unless noted.
+
+## Market structure
+| Property | Forever | Evidence |
+|---|---|---|
+| Engine | Modern Retail `C_AuctionHouse` (86 functions). Commodities are listed per unit and filled cheapest-first; gear is one item per listing; bids exist only on items. | [SRC] `Blizzard_APIDocumentationGenerated/AuctionHouseDocumentation.lua` |
+| Partition | No realms. You pick a ruleset (PvP 1, Normal 2, RP 3, RP-PvP 15; KR and TW have 1 and 2 only). No cross-ruleset or cross-faction play. Each region has **15 houses** (IDs 110–121, 123–125): 5 sets × {Alliance, Horde, Blackwater (neutral)}. The set 112/115/118 is empty. | [REPORTED] Blizzard forum thread 60334 (2026-11-05/06) and goldbook issue #67 · CONFIRMED Blizzard news (no cross-ruleset play) |
+| Empty house set | Probably reserved for the **Hardcore** ruleset, launching winter 2026. That would mean a market starting from zero that we can observe from day one. | [INFER] |
+| Neutral AH | "Blackwater Auction House" exists in the API, which implies Alliance↔Horde trade inside a ruleset. The cut is unknown; it was 15% in Classic. | [REPORTED] house names · cut [TODO-INGAME] |
+| Shards | Realm shards such as `CAMWOWEU4Realm6PvP`/`Realm8PvP` showed the same min buyout for 85% of items, so a ruleset is probably one market across shards. | [REPORTED] goldbook #67 |
+| Ruleset price spread | Week one: RP prices about 1.63× Normal, RP-PvP about 1.88×. No cross-ruleset trade means no arbitrage, so these spreads can persist. | [REPORTED] timesaver.gg 2026-11-07 · [INFER] |
+| WoW Token | The UI code ships (`Blizzard_AuctionHouseUI/Shared/Blizzard_AuctionHouseWoWTokenFrame.lua`), but it's switched off at runtime by `C_WowTokenUI.ShouldDisplayInAuctionHouse()`. Press reports **no Token**, so there's no official gold↔money exchange rate. | [SRC] + [REPORTED] cogconnected 2026-10-19 · [TODO-INGAME] |
+| Durations | Conflicting: the strings say 2/8/24 h (Classic), beta reports say 12/24/48 h. Time-left bands: <30m, 30m–2h, 2–12h, >12h. | [SRC] BIR `GlobalStrings/enUS.lua:1172-1174` (build 70532) · [TODO-INGAME] |
+| Deposit / cut | Not published. Measure with `C_AuctionHouse.CalculateItemDeposit` and sale-invoice mail. | [TODO-INGAME] |
+| Camelot UI | Browses by required level (not item level). Vanilla categories (relics, ammo, quivers, soul and profession bags). | [SRC] `Blizzard_AuctionHouseUI/Camelot/Blizzard_AuctionData.lua` |
+| Experience preset | Classic/Enhanced is client presentation only. It does **not** split markets. | [SRC] `Blizzard_GlueXML/Mainline/ExperiencePreset.lua` |
+| Rules | GDKP banned. Gold *buyers* face permanent bans. Blizzard may link AHs if a ruleset's population dries up, so always store a house key with each record. | [REPORTED] warcrafttavern, playnews |
+
+## Data access
+**Addon side** [SRC]:
+- No AH API returns secret values. Scan data is plain numbers and strings.
+- Full scan: `ReplicateItems()` → `REPLICATE_ITEM_LIST_UPDATE` → `GetReplicateItemInfo(i)`. Community convention is about one scan per 15 minutes.
+- Targeted searches are capped at 100/min (doc comment).
+- `HasRestrictions` (one hardware event per action): `PostItem`, `PostCommodity`, `Confirm*`, `PlaceBid`, `StartCommoditiesPurchase`, `CancelAuction`. Reading data can be automated; acting on it can't.
+
+**Out of game: Battle.net Game Data API** [REPORTED, undocumented, no Blizzard staff confirmation]:
+- Namespaces: `dynamic-forever-{us,eu,kr,tw}`, `static-1.60.1_70399-forever-{region}` (the unversioned static namespace returned 403), `profile-forever-{region}`.
+- Endpoints:
+  - `/data/wow/ruleset/{id}/auctions/` (index; the trailing-slash rule flipped on Nov 6, and `/auctions/index` was also reported to work)
+  - `/data/wow/ruleset/{id}/auctions/{houseId}`
+  - `.../{houseId}/commodities` → `{id, item, quantity, unit_price, time_left}`
+- Bug: the ruleset ID in the path doesn't filter results, so the same house returns identical data under every ruleset. **De-duplicate by house ID; never sum across rulesets.**
+- 43% of item IDs returned 404 from the static namespace [REPORTED]. Snapshot-only (no history). Rate limits assumed to match Retail (36k/h, 100/s) [INFER].
+- **Measured by our collector, 2026-11-08** [VERIFIED live API, wowf-ah-collector runs on bob]:
+  - Index shape is `{_links, auctions: [{key: {href}, name, id}]}`, and every ruleset lists all 15 houses. Names: 110–112 "Alliance", 113–115 "Horde", 116–118 "Blackwater".
+  - House response: `{_links, id, name, commodities: {href}, ruleset: {href}, auctions: [...]}`. Listings are `{id, item: {id, bonus_lists?...}, quantity, buyout, bid?, time_left}`. Every listing with a buyout had quantity 1 (0 of 129k had quantity > 1). Bids are rare (399 of 129k). No `unit_price`.
+  - Commodities: `{id, item: {id}, quantity, unit_price, time_left}`. No buyout.
+  - House and commodities endpoints are **disjoint**: no shared auction IDs or item IDs (2,980 vs 839 items on house 111). Summing both doesn't double count.
+  - Empty set 112/115/118: **200 with an empty listing**, not 404.
+  - Size per house varies widely. Four big houses (110/111/113/114): up to 129k item listings + 51k commodity listings, 11.6 + 4.4 MB JSON, ~1.3 MB zstd-9. Mid: 116/117/119/120/123/124. Tiny: 121/125. A full sweep is ~808k rows.
+  - `Last-Modified` is per house, all set within ~6 s of each other (18:16:18–24Z), and unchanged >52 min later. `If-Modified-Since` returns **304**. The refresh interval is still to be measured.
+  - **House → ruleset mapping is unknown** because the API ignores the ruleset. Needed before any per-ruleset analysis. [TODO]
+- Paths changed within 24 hours of going live, so pin your client and log schema drift.
+
+## Tooling status (2026-11-08)
+| Tool | Forever | Analysis value |
+|---|---|---|
+| TSM 4.15 + new Desktop App | Supported since launch [CONFIRMED tradeskillmaster.com news, about Nov 1] | Price sources incl. new DBNumAuctions/DBAlt*. Web Forever dashboard. No public Forever API. |
+| Auctionator | Works [REPORTED CurseForge, Interface 16001] | Local DB only |
+| Auctioneer-Forever (fork) | Beta [CONFIRMED GitHub README] | Reported **SavedVariables-not-reloaded** beta bug. Check persistence for all our addons. |
+| ForeverForge Auction | Works, 2.1.7 on Nov 8 | Scans about every 15 min. All Rights Reserved. |
+| Journalator | Listed for Forever [REPORTED] | Personal P&L ledger with export |
+| Undermine Exchange, Saddlebag, Oribos Exchange, wowauction | **Retail only** | The Undermine/Shatari collector is open source (erorus): a schema to copy |
+| goldbook (jkc-be) | Forever polling added on Nov 6 | Hourly-snapshot prior art |
+| Public Forever history dataset | **None exists** | History exists only if someone collects it now |
+
+## Prior art for macro analysis
+- EVE Monthly Economic Reports: CPI, faucets/sinks, money supply. A dashboard template, but they rely on telemetry we don't have.
+- Castronova 2001 (EverQuest GNP and exchange rate).
+- arXiv 2210.07970 (OSRS Grand Exchange: tax and sink interventions as natural experiments).
+- arXiv 1905.06721 (OSRS price-series statistics).
+- VŠE thesis on WoW Token and AH econometrics (day-of-week effects).
+- Gaps: no published Classic-style launch-economy time series, no tested phase-event study, no published WoW AH backtest.

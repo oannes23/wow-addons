@@ -34,14 +34,14 @@ Researched 2026-11-08: three research agents, plus a direct check of the API sou
 - Bug: the ruleset ID in the path doesn't filter results, so the same house returns identical data under every ruleset. **De-duplicate by house ID; never sum across rulesets.**
 - 43% of item IDs returned 404 from the static namespace [REPORTED]. Snapshot-only (no history). Rate limits assumed to match Retail (36k/h, 100/s) [INFER].
 - **Measured by our collector, 2026-11-08** [VERIFIED live API, wowf-ah-collector runs on bob]:
-  - Index shape is `{_links, auctions: [{key: {href}, name, id}]}`, and every ruleset lists all 15 houses. Names: 110–112 "Alliance", 113–115 "Horde", 116–118 "Blackwater".
+  - Index shape is `{_links, auctions: [{key: {href}, name, id}]}`, and every ruleset lists all 15 houses. Names (all four ruleset indexes are identical): Alliance = 110, 111, 112, 119, 123; Horde = 113, 114, 115, 120, 124; Blackwater = 116, 117, 118, 121, 125. Probable sets [INFER from ID pattern + sizes]: S1 {110,113,116}, S2 {111,114,117}, S3 {112,115,118} (empty), S4 {119,120,121}, S5 {123,124,125}. Sizes: S1/S2 big (A/H ~0.7–0.9 MB zst, BW mid); S4/S5 mid (BW tiny). **House 114 = Horde, Normal ruleset** [VERIFIED 2026-11-08: 5 listings seen in game matched 5/5 on 114, 0 on the other 11 houses]. Hence probably Normal = S2 {111,114,117} [INFER]. Other rulesets are unmapped. Method: record exact buyouts of rare gear listings, then match them against snapshots (wowf-ah-collector `scripts/match_listings.py`). Vanilla item IDs carry over unchanged (869, 870, 873, 867, 1204 verified).
   - House response: `{_links, id, name, commodities: {href}, ruleset: {href}, auctions: [...]}`. Listings are `{id, item: {id, bonus_lists?...}, quantity, buyout, bid?, time_left}`. Every listing with a buyout had quantity 1 (0 of 129k had quantity > 1). Bids are rare (399 of 129k). No `unit_price`.
   - Commodities: `{id, item: {id}, quantity, unit_price, time_left}`. No buyout.
   - House and commodities endpoints are **disjoint**: no shared auction IDs or item IDs (2,980 vs 839 items on house 111). Summing both doesn't double count.
   - Empty set 112/115/118: **200 with an empty listing**, not 404.
   - Size per house varies widely. Four big houses (110/111/113/114): up to 129k item listings + 51k commodity listings, 11.6 + 4.4 MB JSON, ~1.3 MB zstd-9. Mid: 116/117/119/120/123/124. Tiny: 121/125. A full sweep is ~808k rows.
-  - `Last-Modified` is per house, all set within ~6 s of each other (18:16:18–24Z), and unchanged >52 min later. `If-Modified-Since` returns **304**. The refresh interval is still to be measured.
-  - **House → ruleset mapping is unknown** because the API ignores the ruleset. Needed before any per-ruleset analysis. [TODO]
+  - `Last-Modified` is per house, all set within ~6 s of each other (18:16:18–24Z), `If-Modified-Since` returns **304**. Refresh is **hourly at ~:16Z**: 18:16 and 19:16 on 2026-11-08, so 2 observations; confirm over a longer window.
+  - House → ruleset mapping can't be read from the API, which ignores the ruleset. Use in-game listing matching: 114 = Horde Normal (see Market structure).
 - Paths changed within 24 hours of going live, so pin your client and log schema drift.
 
 ## Tooling status (2026-11-08)

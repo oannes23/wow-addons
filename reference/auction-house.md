@@ -41,6 +41,13 @@ Researched 2026-11-08: three research agents, plus a direct check of the API sou
   - Empty set 112/115/118: **200 with an empty listing**, not 404.
   - Size per house varies widely. Four big houses (110/111/113/114): up to 129k item listings + 51k commodity listings, 11.6 + 4.4 MB JSON, ~1.3 MB zstd-9. Mid: 116/117/119/120/123/124. Tiny: 121/125. A full sweep is ~808k rows.
   - `Last-Modified` is per house, all set within ~6 s of each other (18:16:18–24Z), `If-Modified-Since` returns **304**. Refresh is **hourly at ~:16Z**: 18:16 and 19:16 on 2026-11-08, so 2 observations; confirm over a longer window.
+  - **Cross-house comparison, first 4 hourly snapshots (2026-11-08 18:16–21:16Z, wowf-ah-collector `scripts/cross_house.py`)** [MEASURED, early]:
+    - Size per faction house: S1/S2 167–212k listings (3.8–4.1k items); S4/S5 30–43k (2.0–2.5k items). Blackwater: 9–11k in S1/S2, ~1.3k in S4/S5.
+    - Commodity price level vs 114 (median ratio of p50 on shared items): S1 and S2 Alliance/Horde **1.00** (only 6–9% of p50s identical, so not an artifact; IQR ≈ 0.7–1.5); S4/S5 **1.53–1.74**; Blackwater **2.6–3.8** (IQR up to ~9). Gear: S4/S5 1.26–1.34. Blackwater gear numbers rest on 18–234 shared items.
+    - Fits press week-one spreads (RP ≈ 1.63× Normal, RP-PvP ≈ 1.88×): S1 = PvP? and S4/S5 = RP/RP-PvP? [INFER, speculative; depends on the inferred sets]. A/H houses within a set have similar levels, which supports the triplet grouping, but S4 and S5 are indistinguishable.
+    - Suffix pricing: in S1/S2 faction houses 19–32% of suffixes trade at >1.2× their item's median suffix (114 top: bonus 12761 ×6.7 over 69 items, 12745 ×2.4, 12758 ×2.1, 12722 ×1.8). In S4/S5 only 2–7% do. Blackwater prices every suffix identically (one price per item: thin market or a single reseller).
+    - Rank correlation of suffix premia with 114: 0.63–0.75 (S1/S2), 0.28–0.42 (S4/S5), 0.32 (117). Suffix demand looks largely shared across the big markets [INFER]; the lower values in thin markets may be noise attenuation, not a different meta.
+    - Hour-to-hour: most commodity p50s don't change between snapshots, so median change is 0. Use trimmed means or diffusion indices for co-movement.
   - House → ruleset mapping can't be read from the API, which ignores the ruleset. Use in-game listing matching: 114 = Horde Normal (see Market structure).
 - Paths changed within 24 hours of going live, so pin your client and log schema drift.
 

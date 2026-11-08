@@ -22,5 +22,4 @@ NOTES="$(awk -v v="$VER" '$0 ~ "^## "v {f=1; next} /^## / {f=0} f' "$ROOT/addons
 if [[ "$DRY" == "--dry-run" ]]; then echo "dry run: would tag $TAG"; exit 0; fi
 git -C "$ROOT" tag -a "$TAG" -m "$NAME $VER"
 git -C "$ROOT" push origin "$TAG"
-gh release create "$TAG" "$ZIP" --repo "$(git -C "$ROOT" remote get-url origin)" \
-  --title "$NAME $VER" --notes "${NOTES:-$NAME $VER}"
+(cd "$ROOT" && gh release create "$TAG" "$ZIP" --title "$NAME $VER" --notes "${NOTES:-$NAME $VER}")

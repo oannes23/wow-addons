@@ -1,0 +1,10 @@
+# Regenerable via scripts/sync-reference.sh — never commit Blizzard's source mirrors
+reference/upstream/
+reference/generated/
+
+.DS_Store
+*.swp
+.venv/
+__pycache__/
+# packager output
+.release/

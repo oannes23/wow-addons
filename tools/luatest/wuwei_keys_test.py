@@ -216,9 +216,12 @@ def test_sell_never_posts():
     K = ns.Keys
     press(g, "skip"); press(g, "skip")                               # 8153 SELL (Wildvine): in bags (bag 1 slot 2)
     assert banner(g)[1].startswith("Accept: open the sell flow (post with Blizzard's Post button, sell ≥ 50s)")
+    ah = g.AuctionHouseFrame
+    press(g, "accept")                                               # default: bag pick is opt-in (taint check pending)
+    assert len(ah.postItem) == 0 and calls(g) == []
+    ns.db.keysSellSelect = True                                      # JNS opts in after the in-game taint check
     before = len(g.printed)
     press(g, "accept"); press(g, "accept")
-    ah = g.AuctionHouseFrame
     assert len(ah.postItem) == 2 and ah.postItem[1].itemID == 8153   # selected in Blizzard's sell frame only
     assert calls(g) == [] and len(g.sent) == 0                       # no purchase, post, bid or cancel call; no search
     assert "sell flow opened. Floor ≥ 50s" in out_since(g, before)

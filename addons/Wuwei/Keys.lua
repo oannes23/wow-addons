@@ -213,7 +213,7 @@ local function OpenSell(play)
   local it = play.item
   -- Select the first matching stack from the bags so Blizzard's sell frame (and our post helper) show it. Posting
   -- stays Blizzard's Post button: no PostCommodity/PostItem call exists in this addon.
-  if ns.db.keysSellSelect ~= false and ahf.SetPostItem then
+  if ns.db.keysSellSelect == true and ahf.SetPostItem then -- opt-in until the taint check (checklist) passes in game
     for bag = 0, NUM_TOTAL_EQUIPPED_BAG_SLOTS or 4 do
       for slot = 1, C_Container.GetContainerNumSlots(bag) do
         if C_Container.GetContainerItemID(bag, slot) == play.id then

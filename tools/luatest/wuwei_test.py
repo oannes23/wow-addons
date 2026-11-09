@@ -81,7 +81,9 @@ def strip_colors(s: str) -> str:
     return re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", s)
 
 
-def boot():
+def boot(use_generated_plan: bool = False):
+    """Load the addon in TOC order. The generated Data/Plan.lua (private, gitignored) is skipped unless asked for, so
+    assertions run against Data/Builtin.lua regardless of what the pipeline last exported."""
     rt = lua51.LuaRuntime(unpack_returned_tuples=True)
     rt.execute(MOCK)
     ns = rt.table()
@@ -89,6 +91,8 @@ def boot():
     assert files == TOC_LUA, files  # TOC order is what we test
     for f in files:
         p = ROOT / f
+        if f == "Data/Plan.lua" and not use_generated_plan:
+            continue
         if not p.exists():
             assert f == "Data/Plan.lua", f"missing {f}"  # generated + gitignored; client tolerates it
             continue
@@ -224,5 +228,18 @@ def main() -> None:
     print("Wuwei harness: OK")
 
 
+def smoke_generated_plan():
+    """If the pipeline has exported a real Plan.lua, it must load and yield plays and tooltips without errors."""
+    if not (ROOT / "Data/Plan.lua").exists():
+        return "skipped (no generated plan)"
+    rt, ns = boot(use_generated_plan=True)
+    assert ns.PLAN is not None and not ns.Plan.IsBuiltin()
+    n114 = len(list(ns.Plan.Plays(114, 15).values()))
+    n117 = len(list(ns.Plan.Plays(117, 15).values()))
+    assert n114 > 0, "generated plan has no plays for 114"
+    return f"generated plan OK: {n114} plays at 114, {n117} at 117, regime {ns.Plan.Regime(114)}"
+
+
 if __name__ == "__main__":
     main()
+    print(smoke_generated_plan())

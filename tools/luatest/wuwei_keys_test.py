@@ -62,9 +62,10 @@ function GetCurrentBindingSet() return 1 end
 """
 
 
-def boot3():
+def boot3(shuttle=True):
     rt, ns = p1.boot(extra=p2.EXTRA + KEYS_EXTRA)
     g = rt.globals()
+    g.WuweiDB.shuttle = shuttle  # most flows here exercise the shuttle buy path (toggle on); default is off (D-028)
     g.mkAH3()
     g.fire("AUCTION_HOUSE_SHOW")
     return rt, ns, g
@@ -91,6 +92,18 @@ def out_since(g, n):
 def to_ready(g, item=3357):
     press(g, "accept")
     g.fire("COMMODITY_SEARCH_RESULTS_UPDATED", item)
+
+
+def test_shuttle_off_queue():
+    rt, ns, g = boot3(shuttle=False)
+    K = ns.Keys
+    assert [p.id for p in K.state.queue.values()] == [8153, 4304, 4338, 2589]   # Liferoot (info only) and HOLD dropped
+    assert K.Mode(K.state.queue[2], 114) == "sell"                              # 4304 via its faction-side SELL
+    for _ in range(6):
+        press(g, "accept"); press(g, "skip")
+    assert all(c.name != "StartCommoditiesPurchase" or c.args[1] not in (3357, 4304) for c in g.ahCalls.values())
+    g.SlashCmdList["WUWEI"]("shuttle on")
+    assert [p.id for p in K.state.queue.values()][:2] == [3357, 4304]           # toggle rebuilds the queue
 
 
 def test_buy_path():
@@ -380,6 +393,7 @@ def test_press_flag_and_errors():
 
 
 def main():
+    test_shuttle_off_queue()
     test_buy_path()
     test_quote_over_max_cancels()
     test_nothing_available()

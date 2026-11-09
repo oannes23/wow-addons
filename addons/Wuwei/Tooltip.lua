@@ -1,4 +1,6 @@
 -- One quiet tooltip line for items in the plan: "Wuwei: SHUTTLE → BW ≥ 65s · ref 3s 60c · 42m".
+-- Shuttle toggle off (default): "Wuwei: SELL ≥ 2s · ref 2s 10c · BW ≥ 65s (2.4×) shuttle off · 42m", or for an item
+-- whose only play is the shuttle, "Wuwei: SHUTTLE (off) → BW ≥ 65s (2.4×) · ref 3s 60c · 42m" (information only).
 local addonName, ns = ...
 
 local Tooltip = {}
@@ -11,9 +13,13 @@ function Tooltip.Line(id)
   if not it then return nil end
   local house = ns.House.Detect()
   local rule = Plan.Rule(it, house)
-  local parts = { Plan.Colorize(it.signal, it.signal .. (rule ~= "" and (" " .. rule) or "")) }
+  local parts = { Plan.Colorize(it.signal, Plan.Label(it.signal) .. (rule ~= "" and (" " .. rule) or "")) }
   local ref = Plan.RefPrice(it, house)
   if ref and it.signal ~= "HOLD" then parts[#parts + 1] = "ref " .. Plan.Money(ref) end
+  if it.shuttle and it.signal ~= "INFO" then
+    local info = Plan.ShuttleInfo(it)
+    if info then parts[#parts + 1] = Plan.Colorize("INFO", info .. " shuttle off") end
+  end
   parts[#parts + 1] = Plan.AgeText()
   return "Wuwei: " .. table.concat(parts, " · ")
 end

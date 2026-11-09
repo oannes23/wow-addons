@@ -148,6 +148,19 @@ def test_protection_warnings():
     cf.price = 500; cf.UpdatePostState(cf); assert codes() == []   # 475 net: clear of every floor
     cf.price = 0; cf.UpdatePostState(cf); assert codes() == []     # warnings judge only a typed price
 
+    # SHUTTLE item posted at the faction house: the floor is its faction verdict (alt 650), not the BW exit (1300).
+    P = ns.Plan
+    g.WuweiDB.shuttle = True
+    assert P.SellFloor(P.Item(4304), 114) == 650 and P.SellFloor(P.Item(4304), 117) == 1300
+    assert P.SellFloor(P.Item(3357), 114) is None                  # no faction verdict: no plan floor at 114
+    c = ns.Post.Compute(rt.eval("{ itemID = 4304, qty = 1, unit = 700, house = 114 }"))
+    assert [w.code for w in c.warnings.values()] == []
+    c = ns.Post.Compute(rt.eval("{ itemID = 4304, qty = 1, unit = 1200, house = 117 }"))
+    assert [w.code for w in c.warnings.values()] == ["plan"]
+    g.WuweiDB.shuttle = False                                      # off: viewed as SELL ≥ 650 everywhere
+    c = ns.Post.Compute(rt.eval("{ itemID = 4304, qty = 1, unit = 600, house = 114 }"))
+    assert [w.code for w in c.warnings.values()] == ["plan"] and c.planItem.signal == "SELL"
+
 
 def snap(rt, g, *items):
     g.owned = rt.eval("{" + ",".join(items) + "}")

@@ -9,7 +9,8 @@ ns.BUILTIN_PLAN = {
     [117] = { level = 81.0, d24h = -0.10, regime = "deflation" },
   },
   items = {
-    [4304] = { ref = { [114] = 600, [117] = 1450 }, signal = "SHUTTLE", buyMax = 700, sellMin = 1300, qtyCap = 60, gain = 38, trend24h = -0.08 },
+    [4304] = { ref = { [114] = 600, [117] = 1450 }, signal = "SHUTTLE", buyMax = 700, sellMin = 1300, qtyCap = 60, gain = 38, trend24h = -0.08,
+               alt = { signal = "SELL", sellMin = 650, gain = 11 } }, -- faction-side verdict, shown while the shuttle toggle is off
     [4338] = { ref = { [114] = 360, [117] = 410 }, signal = "SELL", sellMin = 420, qtyCap = 120, gain = 9, trend24h = -0.02 },
     [3357] = { ref = { [114] = 1200, [117] = 6500 }, signal = "SHUTTLE", buyMax = 4000, sellMin = 6500, qtyCap = 20, gain = 52 },
     [2772] = { ref = { [114] = 900, [117] = 880 }, signal = "HOLD", gain = 0, note = "wait for the index to bottom" },

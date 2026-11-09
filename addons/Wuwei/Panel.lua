@@ -58,6 +58,8 @@ function Panel.HeaderText(house, reason)
   local parts = { hname, format(L["data %s old"], Plan.AgeText()) }
   if Plan.IsBuiltin() then parts[#parts + 1] = L["SAMPLE DATA"] end
   if regime then parts[#parts + 1] = L["market: "] .. regime:upper() end
+  local hidden = house and Plan.ShuttleHidden(house) or 0
+  if hidden > 0 then parts[#parts + 1] = format(L["shuttle off (%d)"], hidden) end
   return table.concat(parts, " · ")
 end
 

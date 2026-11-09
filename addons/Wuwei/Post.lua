@@ -28,8 +28,9 @@ local function Round(x) return floor(x + 0.5) end
 function Post.Compute(s)
   local Plan = ns.Plan
   local it = Plan.Item(s.itemID)
+  local floorMin = Plan.SellFloor(it, s.house)
   local typed = s.unit and s.unit > 0
-  local unit = typed and s.unit or (it and it.sellMin) or nil
+  local unit = typed and s.unit or floorMin or nil
   local c = { planItem = it, deposit = s.deposit, qty = s.qty or 1, house = s.house, duration = s.duration,
     priceSource = typed and "typed" or (unit and "plan sellMin" or nil), price = unit, warnings = {} }
   c.rate, c.rateAssumed = Post.Cut(s.house)
@@ -45,8 +46,8 @@ function Post.Compute(s)
     if s.vendor and s.vendor > 0 and unit < s.vendor then
       W[#W + 1] = { code = "vendor", text = format(L["price below vendor sell price (%s)"], Plan.Money(s.vendor)) }
     end
-    if it and it.sellMin and unit < it.sellMin then
-      W[#W + 1] = { code = "plan", text = format(L["price below plan floor (%s)"], Plan.Money(it.sellMin)) }
+    if floorMin and unit < floorMin then
+      W[#W + 1] = { code = "plan", text = format(L["price below plan floor (%s)"], Plan.Money(floorMin)) }
     end
     if c.basis then
       if unit < c.basis then
@@ -77,7 +78,7 @@ function Post.Lines(c)
   if it then
     local rule = Plan.Rule(it, c.house)
     local floor_ = it.sellMin and not rule:find(Money(it.sellMin), 1, true) and (" · plan floor " .. Money(it.sellMin)) or ""
-    lines[#lines + 1] = Plan.Colorize(it.signal, it.signal .. (rule ~= "" and (" " .. rule) or "")) .. floor_
+    lines[#lines + 1] = Plan.Colorize(it.signal, Plan.Label(it.signal) .. (rule ~= "" and (" " .. rule) or "")) .. floor_
   else
     lines[#lines + 1] = L["not in the plan"]
   end

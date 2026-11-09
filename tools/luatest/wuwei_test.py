@@ -111,6 +111,8 @@ def main() -> None:
 
     # --- Core init / db
     assert g.WuweiDB.enabled is True and g.WuweiDB.house is None
+    assert g.WuweiDB.shuttle is False                       # shuttle off by default (D-028); test_shuttle_off covers it
+    g.WuweiDB.shuttle = True                                # the assertions below are the shuttle-on behaviour
     assert len(g.postCalls) == 1 and g.postCalls[1][1] == 0  # Item tooltip post-call registered
 
     # --- Plan helpers
@@ -227,7 +229,35 @@ def main() -> None:
     slash("status"); slash("probe"); slash("house nope"); slash("bogus")
     out = "\n".join(strip_colors(p) for p in g4.printed.values())
     assert "house: 114 (faction Horde)" in out and "BUILTIN SAMPLE" in out and "uiMapID: 85" in out and "usage:" in out, out
+    test_shuttle_off()
     print("Wuwei harness: OK")
+
+
+def test_shuttle_off():
+    """D-028: default off = faction side only. SHUTTLE items fall back to their faction verdict (`alt`) or become
+    information-only (INFO): never a panel row or a key-queue play, still a tooltip line."""
+    rt, ns = boot(); g = rt.globals(); P = ns.Plan; slash = g.SlashCmdList["WUWEI"]
+    assert g.WuweiDB.shuttle is False and not P.ShuttleOn()
+    assert P.RawItem(4304).signal == "SHUTTLE" and P.Item(4304).signal == "SELL" and P.Item(4304).sellMin == 650
+    assert P.Item(4304).buyMax is None and P.Item(4304).shuttle.sellMin == 1300           # shuttle numbers kept aside
+    assert P.Item(3357).signal == "INFO" and P.Item(3357).buyMax is None                  # no alt: info only
+    assert [p.id for p in P.Plays(114).values()] == [8153, 4304, 4338, 2589, 2772]       # Liferoot gone; 4304 by alt gain 11
+    assert P.ShuttleHidden(114) == 2
+    assert strip_colors(ns.Tooltip.Line(4304)) == "Wuwei: SELL ≥ 6s 50c · ref 6s · BW ≥ 13s (2.4×) shuttle off · 42m"
+    assert strip_colors(ns.Tooltip.Line(3357)) == "Wuwei: SHUTTLE (off) → BW ≥ 65s (5.4×) · ref 12s · 42m"
+    assert strip_colors(ns.Tooltip.Line(4338)) == "Wuwei: SELL ≥ 4s 20c · ref 3s 60c · 42m"   # non-shuttle untouched
+    ah = g.mkAH(); ah.shown = True; g.fire("AUCTION_HOUSE_SHOW")
+    f = ns.Panel.frame
+    assert strip_colors(f.header.text).endswith("market: DEFLATION · shuttle off (2)"), f.header.text
+    sigs = [strip_colors(f.rows[i].signal.text) for i in range(1, 16) if f.rows[i].shown]
+    assert sigs == ["SELL", "SELL", "SELL", "BUY", "HOLD"], sigs
+    slash("shuttle"); assert g.WuweiDB.shuttle is True and P.Item(3357).signal == "SHUTTLE"
+    assert strip_colors(f.rows[1].signal.text) == "SHUTTLE" and "shuttle off" not in strip_colors(f.header.text)
+    slash("shuttle off"); assert g.WuweiDB.shuttle is False
+    slash("shuttle on"); assert g.WuweiDB.shuttle is True
+    slash("shuttle off"); slash("status")
+    out = "\n".join(strip_colors(p) for p in g.printed.values())
+    assert "shuttle: off (faction AH only" in out and "shuttle: off (2 shuttle items shown as info only)" in out, out
 
 
 def smoke_generated_plan():

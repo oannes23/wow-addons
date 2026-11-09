@@ -11,3 +11,6 @@ __pycache__/
 
 # ItemDataExport input is generated from the private AH archive (collector scripts/export_pairs.py)
 addons/ItemDataExport/Data/Pairs.lua
+
+# Wuwei plan data is generated from the private AH archive (wowf-ah-analysis)
+addons/Wuwei/Data/Plan.lua

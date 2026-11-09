@@ -54,11 +54,11 @@ ns.INPUT = { generated = "2026-11-09T...", source = "item_snapshot/v1 all houses
 If it's missing, `Data/Builtin.lua` provides a ~10-tuple smoke set (items verified on house 114). The client logs the missing file and continues [INFER, verify].
 
 ## Open questions / in-game verification
-- [ ] Does the client resolve a bonus-list item string to the suffixed name ("… of the Eagle")? Check `/ide start` on the builtin set, then `/dump ItemDataExportDB.results["3195:12918"].name`.
-- [ ] Does `GetItemStats(link)` reflect the bonus id (suffix stats), or only base stats? Compare `3195` with `3195:12918`.
-- [ ] What does modifier type 28 change (value ~5244–5256)? Compare `3195:12918` with `3195:12918:28:5254`: ilvl, stats, tooltip.
-- [ ] Does a missing `Data/Pairs.lua` cause a visible error?
-- [ ] Throughput: how many item loads per second before the server throttles?
+- [x] Bonus-list item strings resolve to the suffixed name: 22,081/22,081, in both the link name and tooltip line 1, and the bonus id survives in the client's canonical link. The [WIKI] layout is confirmed. [INGAME 2026-11-09, build 1.60.1.70862]
+- [x] `GetItemStats(link)` reflects the suffix: stats differ across suffixes on all 1,058 multi-suffix items. [INGAME 2026-11-09]
+- [x] Modifier type 28 changes nothing visible (ilvl, stats, tooltip identical across 150 probes). [INGAME 2026-11-09]
+- [ ] Does a missing `Data/Pairs.lua` cause a visible error? (not exercised: the first run had the file)
+- [x] Throughput: 26,583 tuples / 5,498 items in one session with 0 failures at 20 in flight. SavedVariables 21.4 MB. [INGAME 2026-11-09]
 
 ## Decisions
 - D-001 (2026-11-09): input is a generated Lua file shipped with the addon (gitignored), not SavedVariables edits. The client only reads SavedVariables at login and overwrites them on logout, so hand-editing them is fragile.

@@ -71,3 +71,9 @@ Researched 2026-11-08: three research agents, plus a direct check of the API sou
 - arXiv 1905.06721 (OSRS price-series statistics).
 - VŠE thesis on WoW Token and AH econometrics (day-of-week effects).
 - Gaps: no published Classic-style launch-economy time series, no tested phase-event study, no published WoW AH backtest.
+
+## Random suffixes on Forever [INGAME 2026-11-09, client 1.60.1.70862]
+- A random suffix is one `bonus_lists` id on the listing. The client resolves `item:<id>::::::::::::1:<bonus>` to the suffixed name and the suffix stats (`C_Item.GetItemInfo` / `GetItemStats` / `C_TooltipInfo.GetHyperlink`). Tool: `addons/ItemDataExport`.
+- 71 bonus ids map to 44 suffix names. Several ids share a name ("of Magic" ×4, "of the Sorcerer" ×3, …), so key analysis on name + stats, not id. The full map lives in the private collector repo (`dim/suffixes.csv`).
+- `modifiers` type 28 (values ~5244–5256) changes no visible item property.
+- The client build observed was 70862, while the local source mirror is 70790: run `scripts/sync-reference.sh` when convenient.

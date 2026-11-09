@@ -69,7 +69,7 @@ loadReq = {}
 C_Item = { GetItemNameByID = function(id) return NAMES[id] end, RequestLoadItemDataByID = function(id) loadReq[#loadReq+1] = id end }
 """
 
-TOC_LUA = ["Locales/enUS.lua", "Data/Builtin.lua", "Data/Plan.lua", "Plan.lua", "House.lua", "Tooltip.lua", "Panel.lua", "Core.lua"]
+TOC_LUA = ["Locales/enUS.lua", "Data/Builtin.lua", "Data/Plan.lua", "Plan.lua", "House.lua", "Ledger.lua", "Post.lua", "Tooltip.lua", "Panel.lua", "Core.lua"]
 
 
 def toc_files():
@@ -81,11 +81,13 @@ def strip_colors(s: str) -> str:
     return re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", s)
 
 
-def boot(use_generated_plan: bool = False):
+def boot(use_generated_plan: bool = False, extra: str = ""):
     """Load the addon in TOC order. The generated Data/Plan.lua (private, gitignored) is skipped unless asked for, so
     assertions run against Data/Builtin.lua regardless of what the pipeline last exported."""
     rt = lua51.LuaRuntime(unpack_returned_tuples=True)
     rt.execute(MOCK)
+    if extra:
+        rt.execute(extra)
     ns = rt.table()
     files = toc_files()
     assert files == TOC_LUA, files  # TOC order is what we test

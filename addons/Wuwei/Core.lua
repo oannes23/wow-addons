@@ -1,5 +1,5 @@
 -- Wuwei · WoW: Forever (Interface 16001, WOW_PROJECT_CAMELOT)
--- Phase 1: plan data, tooltip line, AH side panel, house detection. No AH data here is secret-valued.
+-- Phase 1: plan data, tooltip line, AH side panel, house detection. Phase 2: post helper, trade ledger. No AH data here is secret-valued.
 local addonName, ns = ...
 local L = ns.L
 
@@ -9,6 +9,7 @@ local DEFAULTS = {
   version = 1,
   enabled = true, -- master switch: tooltip line and panel
   tooltip = true,
+  post = true, -- post-helper info box
   house = nil, -- manual override (house id); nil = auto-detect
 }
 
@@ -34,6 +35,7 @@ local function Status()
     Plan.IsBuiltin() and "BUILTIN SAMPLE (no Data/Plan.lua)" or tostring(p.source), tostring(p and p.generated),
     Plan.AgeText(), n))
   Say(format("plays at this house: %d", #Plan.Plays(house)))
+  Say(format("ledger entries: %d | post helper: %s", #ns.Ledger.Entries(), tostring(ns.db.post)))
 end
 
 local function Probe()
@@ -61,8 +63,24 @@ local function OnSlash(msg)
     Say(format("enabled: %s", tostring(ns.db.enabled)))
   elseif cmd == "probe" then
     Probe()
+  elseif cmd == "post" then
+    ns.db.post = not ns.db.post
+    if not ns.db.post then ns.Post.Hide() end
+    Say(format("post helper: %s", tostring(ns.db.post)))
+  elseif cmd == "ledger" then
+    local sub, arg = rest:match("^(%S*)%s*(%S*)")
+    if sub == "clear" then
+      if arg == "confirm" then
+        ns.Ledger.Clear()
+        Say("ledger cleared")
+      else
+        Say("this deletes all ledger entries. Run: /wuwei ledger clear confirm")
+      end
+    else
+      for _, line in ipairs(ns.Ledger.Summary()) do Say(line) end
+    end
   else
-    Say("usage: /wuwei [status | house <id|auto> | toggle | probe]")
+    Say("usage: /wuwei [status | house <id|auto> | toggle | post | ledger [clear confirm] | probe]")
   end
 end
 
@@ -70,6 +88,8 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
   InitDB()
   ns.Tooltip.Init()
   ns.Panel.Init()
+  ns.Ledger.Init()
+  ns.Post.Init()
 end)
 
 SLASH_WUWEI1 = "/wuwei"

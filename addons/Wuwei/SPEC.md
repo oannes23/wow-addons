@@ -23,8 +23,8 @@ Existing addons (survey, 2026-11-09) cover scanning, posting and ledgers well: T
   3. [x] (max-price over-price warning deferred, D-009) An **AH side panel** attached to `AuctionHouseFrame`: today's plays for *this* house, sorted by expected gold. Each row has a **Search** button (`C_AuctionHouse.SendSearchQuery`; 100/min limit respected) that opens Blizzard's own buy frame for the item. The max price is shown, with an over-price warning.
   4. [x] (map IDs still [TODO-INGAME]) **House detection:** faction AH vs Blackwater, by map (`C_Map.GetBestMapForUnit("player")` → Booty Bay, Gadgetzan, Everlook) with `GetZoneText` as fallback. The map IDs are [TODO-INGAME].
 - **Phase 2:**
-  - **Post helper:** a target price from the plan plus posting protection (block or confirm below vendor price, below the plan floor, or below the cost basis). Deposit via `C_AuctionHouse.CalculateCommodityDeposit`/`CalculateItemDeposit`, the AH cut, and net proceeds shown before the click.
-  - **Ledger:** purchases (`COMMODITY_PURCHASE_SUCCEEDED`, `AUCTION_HOUSE_PURCHASE_COMPLETED`), posts (`AUCTION_HOUSE_AUCTION_CREATED`), sales and expiries (mail), with cost basis per item and house. Exported to the pipeline as SavedVariables, so we get P&L and **ground truth for the inferred-sales model** (ADR 0003 calibration).
+  - [x] **Post helper** (`Post.lua`): a target price from the plan plus posting protection (block or confirm below vendor price, below the plan floor, or below the cost basis). Deposit via `C_AuctionHouse.CalculateCommodityDeposit`/`CalculateItemDeposit`, the AH cut, and net proceeds shown before the click.
+  - [x] **Ledger** (`Ledger.lua`; sales and expiries inferred from owned-auction diffs rather than mail, D-017): purchases (`COMMODITY_PURCHASE_SUCCEEDED`, `AUCTION_HOUSE_PURCHASE_COMPLETED`), posts (`AUCTION_HOUSE_AUCTION_CREATED`), sales and expiries (mail), with cost basis per item and house. Exported to the pipeline as SavedVariables, so we get P&L and **ground truth for the inferred-sales model** (ADR 0003 calibration).
 - **Phase 3 (maybe):**
   - A "deal" highlight in Blizzard's browse results: a listing below our `BUY ≤` price is tinted.
   - Shuttle trip planner: carry list for 114 → 117 with depth-capped quantities.
@@ -81,7 +81,8 @@ tooltip:  Wuwei: SHUTTLE → BW ≥ 65s · ref 3s60c (114) / 70s (117) · 24h �
 - [ ] Map IDs for Booty Bay, Gadgetzan and Everlook; whether Blackwater is reachable there on Forever.
 - [ ] Blackwater cut and deposit (decides SHUTTLE). Faction cut 5%?
 - [ ] `PostCommodity` copper rule; AH durations; deposit 1s vs 1c.
-- [ ] Do the purchase events carry enough (item, quantity, price) for the ledger, or does it need the buy-frame quote?
+- [x] Do the purchase events carry enough for the ledger? **No**: `COMMODITY_PURCHASE_SUCCEEDED` has no payload and `AUCTION_HOUSE_PURCHASE_COMPLETED` carries only `auctionID`. The quote comes from a hook on `AuctionHouseFrame:StartCommoditiesPurchase` (D-015).
+- [ ] Phase 2 in-game items: checklist 11-18 and the [TODO-INGAME] list at the bottom.
 
 ## Decisions
 - D-001 (2026-11-09): **thin action layer over a pipeline**, not another scanner. The differentiators are our signals, cross-house spreads, real prices, and a ledger that feeds back.
@@ -95,6 +96,49 @@ tooltip:  Wuwei: SHUTTLE → BW ≥ 65s · ref 3s60c (114) / 70s (117) · 24h �
 - D-009 (2026-11-09): **Over-price warning deferred.** It needs live listing prices (search results events), which is more surface than the MVP wants; revisit with Phase 2/3. The panel shows the rule (`≤ buyMax`, `≥ sellMin`) only.
 - D-010 (2026-11-09): **Panel row semantics.** A house's plays are plan items with `ref[house]`, `AVOID` dropped, sorted by `gain` desc (ties by item id), capped at 15. SHUTTLE from a faction house shows `→ BW ≥ sellMin`; at Blackwater it is the sell side (`sell ≥ sellMin`). `ref` for the tooltip falls back to the lowest-numbered house when the current one has none. Data age is computed from `generated` (UTC ISO) vs `GetServerTime()`. Builtin sample data is labelled `SAMPLE DATA` in the header.
 - D-011 (2026-11-09): money is formatted as plain text (`3s 60c`), not coin textures, so the same string works in tooltips and FontStrings (`C_CurrencyInfo.GetCoinTextureString` exists but is not needed).
+- D-012 (2026-11-09): **Post helper refreshes from a post-hook on the sell frames' `UpdatePostState`** (`hooksecurefunc(AuctionHouseFrame.CommoditiesSellFrame|ItemSellFrame, "UpdatePostState", ...)`). Blizzard calls it on every item, quantity, price and duration change (Blizzard_AuctionHouseSellFrame.lua:289-300 callbacks, :338 definition, :360 `OnDurationUpdated`, `SetItem` :374-394), so the `AUCTION_HOUSE_SHOW` + `BAG_UPDATE`/0.5 s `OnUpdate` fallback is not needed. State is read only through public accessors: `GetItem()` (ItemLocation, :411), `GetDuration()` (:435), `GetQuantity()` (:439), `GetUnitPrice()` (commodities, CommoditiesSellFrame.lua:73), `GetPrice()` -> bid, buyout (items, ItemSellFrame.lua:445). The hook body is `pcall`-wrapped. The info box is `WuweiPostFrame`, anchored under the Wuwei panel (else right of `AuctionHouseFrame`). Silence with `/wuwei post`.
+- D-013 (2026-11-09): **Fees.** Deposit comes from our own call to `C_AuctionHouse.CalculateCommodityDeposit(itemID, durationIndex, qty)` / `CalculateItemDeposit(itemLocation, durationIndex, qty)` (AuctionHouseDocumentation: `duration` is a luaIndex, not hours, so the hour mapping is never needed; the label uses `AUCTION_DURATION_ONE/TWO/THREE`). Duration index: `frame:GetDuration()`, else CVar `auctionHouseDurationDropdown` (what Blizzard's dropdown stores, AlignedDuration :177), else 2, labelled `(assumed)`. **Cut: 5% faction, 15% Blackwater, both labelled "assumed"** until measured. Cut = round(total x rate). Net if sold = total - cut; the deposit is assumed refunded on a sale and lost on expiry (shown separately). No price typed: the box falls back to the plan's `sellMin`, labelled.
+- D-014 (2026-11-09): **Protection is advisory red text, not a block.** Blizzard's Post button is the only action and we cannot disable it without touching secure frames. Three warnings, only on a price the player typed: `vendor` (unit < vendor sell price; `plan.vendor`, else `C_Item.GetItemInfo` return 11), `plan` (unit < `sellMin`), `basis` (unit < cost basis, or net-of-cut unit < basis).
+- D-015 (2026-11-09): **Buys.** Commodities: post-hook on `AuctionHouseFrame:StartCommoditiesPurchase(itemID, quantity, unitPrice, totalPrice)` (Blizzard_AuctionHouseFrame.lua:844) stores the quote; `COMMODITY_PRICE_UPDATED(updatedUnitPrice, updatedTotalPrice)` refines it (Blizzard_AuctionHouseBuyDialog.lua:140); `COMMODITY_PURCHASE_SUCCEEDED` (no payload) records it; `COMMODITY_PURCHASE_FAILED` / `COMMODITY_PRICE_UNAVAILABLE` drop it. Items: post-hook on `AuctionHouseFrame:StartItemBuyout(auctionID, buyout)` (:859) looks the listing up with `C_AuctionHouse.GetAuctionInfoByID`, and `AUCTION_HOUSE_PURCHASE_COMPLETED(auctionID)` records it. This replaces "buyout from the selected browse result": it is exact per auction. Bids are not recorded. A commodity buy's `unit` is total/qty rounded; `total` is the exact amount paid.
+- D-016 (2026-11-09): **Posts** are recorded on `AUCTION_HOUSE_AUCTION_CREATED(auctionID)` using details cached by a post-hook on the sell frame's `CachePendingPost(item, duration, quantity, ...)` (Blizzard calls it only after `PostCommodity`/`PostItem` succeeded: CommoditiesSellFrame.lua:141-143, ItemSellFrame.lua:497, 513). Commodity: one entry, qty = stack. Item: Blizzard's `quantity` is taken as the number of auctions (multisell), so one entry of qty 1 per `CREATED` event [TODO-INGAME]. A post with no cached context (another addon) is recorded by the next owned-auction snapshot with `inferred = true`.
+- D-017 (2026-11-09): **Sales, expiries and cancels are inferred from owned auctions, not mail.** `GetInboxInvoiceInfo` is a legacy global used by MailFrame.lua:790 but is absent from the generated API docs; it needs the mail opened by the player and sale mail is delayed. Rules, on `OWNED_AUCTIONS_UPDATED` (`GetOwnedAuctions()` -> OwnedAuctionInfo {auctionID, itemKey, quantity, timeLeftSeconds?, buyoutAmount?, status}): `status == Sold` (Enum.AuctionStatus 1) records `sold` once, `inferred` absent. An auction missing from the list is `expired` if `now >= lastSeenExpiry - 120 s`, else `sold`, both `inferred = true`. A sale collected after its expiry time is therefore misread as an expiry. `AUCTION_CANCELED(auctionID)` records `cancel` directly. The diff only judges auctions of the current house. Snapshot state persists in `WuweiDB.ledgerState.owned` so offline sales are seen next login; the first snapshot ever is a baseline (no post entries).
+- D-018 (2026-11-09): **Cost basis is average-cost, not FIFO.** Buys add qty and cost to a per-item pool; each `sold` entry removes qty at the pool's current average; posts, cancels and expiries never change it. `CostBasis(itemID)` returns integer copper per unit and the held qty. Sold units without a prior buy cost 0 and are counted in `unbasedSoldQty`. `PnL()` = {spent, grossRevenue, netRevenue (after the assumed cut), cogs, realized, heldQty, heldCost, unbasedSoldQty, counts}.
+- D-019 (2026-11-09): **Ledger cap 5000 entries** (`Ledger.MAX_ENTRIES`), oldest dropped first; cost basis replays only what is kept, so trimmed buys are forgotten. At roughly 150 bytes per entry the SavedVariables stay under 1 MB.
+- D-020 (2026-11-09): **One `C_AuctionHouse.QueryOwnedAuctions({})` per `AUCTION_HOUSE_SHOW`** (read-only, Blizzard-throttled, `pcall`-wrapped) so sales show up without the player opening the Auctions tab. `WuweiDB.ledgerQuery = false` disables it.
+
+## Ledger export (`WuweiDB.ledger`, schema version 1)
+SavedVariables file: `WTF/Account/<acct>/SavedVariables/WuweiDB.lua`, a Lua table assignment `WuweiDB = { ... }`. A pipeline importer reads `ledgerVersion` and `ledger` and ignores every other key (`enabled`, `tooltip`, `post`, `house`, `version`, `ledgerState`, `ledgerQuery`). All money is **integer copper**; all times are **server Unix seconds** (`GetServerTime()`, UTC).
+
+| Key | Type | Notes |
+|---|---|---|
+| `WuweiDB.ledgerVersion` | integer | `1`. Bumped on any breaking change to the entry fields. |
+| `WuweiDB.ledger` | array (1-based), chronological | Oldest first. At most 5000 entries; the oldest are dropped, so successive exports overlap: **dedupe on (`ts`, `kind`, `itemID`, `qty`, `unit`, `auctionID`, `src`)**. |
+
+Entry fields:
+
+| Field | Type | Present | Meaning |
+|---|---|---|---|
+| `ts` | integer | always | `GetServerTime()` when recorded (for inferred rows: when the addon noticed, not when it happened). |
+| `kind` | string | always | One of `"buy"`, `"post"`, `"sold"`, `"cancel"`, `"expired"`. |
+| `itemID` | integer | always | Item ID (`itemKey.itemID`; item level and suffix are not stored). |
+| `qty` | integer | always | Units. buy: units bought. post: units posted (commodity stack; 1 per auction for items). sold/cancel/expired: units of that auction. |
+| `unit` | integer | usually | Copper per unit, before the AH cut: paid (buy), asking (post/cancel/expired), gross sale price (sold). Absent only for an owned auction with neither buyout nor bid. |
+| `house` | integer | usually | Auction house id at the time (111 Alliance, 114 Horde, 117 Blackwater; whatever `House.Detect()` returned, so a manual override counts). Absent if undetermined. |
+| `src` | string | always | Source event: `COMMODITY_PURCHASE_SUCCEEDED`, `AUCTION_HOUSE_PURCHASE_COMPLETED`, `AUCTION_HOUSE_AUCTION_CREATED`, `AUCTION_CANCELED` or `OWNED_AUCTIONS_UPDATED`. |
+| `total` | integer | buy only | Exact copper paid for the whole purchase (`unit` = `round(total / qty)`). |
+| `auctionID` | integer | item buys; post, sold, cancel, expired | Blizzard auction id; links a `post` to its later `sold`/`cancel`/`expired`. Absent on commodity buys. Do not treat as globally unique over months. |
+| `inferred` | boolean `true`, or absent | post, sold, expired | `true` when derived from a snapshot diff (a guess, D-017); absent when the game stated it (`status == Sold`, `AUCTION_HOUSE_AUCTION_CREATED`, `AUCTION_CANCELED`, purchase events). |
+
+Example:
+```lua
+WuweiDB = { ledgerVersion = 1, ledger = {
+  { ts = 1794210500, kind = "buy",  itemID = 4338, qty = 50, unit = 310, total = 15500, house = 114, src = "COMMODITY_PURCHASE_SUCCEEDED" },
+  { ts = 1794211000, kind = "post", itemID = 4338, qty = 30, unit = 400, house = 117, auctionID = 901, src = "AUCTION_HOUSE_AUCTION_CREATED" },
+  { ts = 1794215000, kind = "sold", itemID = 4338, qty = 30, unit = 400, house = 117, auctionID = 901, src = "OWNED_AUCTIONS_UPDATED", inferred = true },
+} }
+```
+Caveats for the importer: `sold` `unit` is gross (the cut is not subtracted; Blackwater 15% and faction 5% are unverified assumptions); `sold` vs `expired` is a heuristic (D-017).
+
 
 ## In-game test checklist
 Run `/console scriptErrors 1` first (P-006). One surprising result is a [TODO-INGAME], not a finding.
@@ -110,4 +154,16 @@ Run `/console scriptErrors 1` first (P-006). One surprising result is a [TODO-IN
 9. **House override:** `/wuwei house 117`, reopen AH: header says Blackwater. `/wuwei house auto` restores.
 10. **Real plan:** drop a generated `Data/Plan.lua` in, `/reload`, confirm `plan source:` changes and age is sane.
 
+Phase 2 checks (11-18). Run `/console scriptErrors 1` first and label every probe (P-006); one surprising result is a [TODO-INGAME], not a finding.
+11. **Sell frame accessors.** Open the AH, Sell tab, pick a commodity (e.g. Linen Cloth) and a gear item. Expect the Wuwei box under the panel with signal, deposit, cut, net, basis. Labelled accessor probe, one line: `/run local f=AuctionHouseFrame.CommoditiesSellFrame; local l=f:GetItem(); print("commodity sell frame | item:", l and C_Item.GetItemID(l), "| dur:", f:GetDuration(), "| qty:", f:GetQuantity(), "| unit:", f:GetUnitPrice())`. Repeat with `ItemSellFrame` and `f:GetPrice()` (prints bid, buyout).
+12. **Box tracks edits.** Change price, quantity and the duration dropdown: the box updates each time (the `UpdatePostState` hook). Deselect the item: the box hides.
+13. **Fees vs Blizzard.** The box's deposit must equal the deposit Blizzard shows in the sell frame, for all three durations. Record the hours behind each index and the exact cut: sell one cheap item at each house and read the sale mail's `consignment`/`deposit` ([TODO-INGAME]; decides D-013 and SHUTTLE).
+14. **Protection.** Type a price under the vendor price, then under the plan `sellMin`, then under a known cost basis: one red line each. A price just above basis but under it after the 5% cut gives `net of cut below cost basis`.
+15. **Buy capture.** Buy 5 of a commodity through Blizzard's dialog; `/wuwei ledger` shows 1 buy. Inspect: `/run local e=WuweiDB.ledger[#WuweiDB.ledger]; print("last ledger entry | kind:", e.kind, "| item:", e.itemID, "| qty:", e.qty, "| unit:", e.unit, "| total:", e.total, "| house:", e.house)`. Compare `total` with the gold actually spent. Repeat with a price-increase notice (Blizzard's "price updated" state) and with a gear buyout.
+16. **Post capture.** Post a commodity stack and one gear item (and 2 gear auctions via quantity 2 if offered): `post` entries with the right qty, unit and `auctionID`. Check the item multisell count (qty 1 per auction?). Open the Auctions tab: no duplicate `post` rows.
+17. **Owned-auction semantics.** On the Auctions tab with a commodity listing: `/run local a=C_AuctionHouse.GetOwnedAuctions()[1]; print("owned[1] | qty:", a.quantity, "| buyout:", a.buyoutAmount, "| bid:", a.bidAmount, "| timeLeftSeconds:", a.timeLeftSeconds, "| timeLeft:", a.timeLeft, "| status:", a.status)`. Is `buyoutAmount` per unit or per stack for commodities? Is `timeLeftSeconds` set? Do sold auctions stay in the list with `status` 1 until the mail arrives?
+18. **Sale / expiry / cancel.** Cancel one listing: a `cancel` entry from `AUCTION_CANCELED`. Let a cheap listing sell and reopen the AH: `sold` (from status, or inferred). Let one expire if feasible. Then `/wuwei ledger clear confirm` and `/reload`: `WuweiDB.ledgerVersion == 1` and an empty `ledger`. Also `/run print("GetInboxInvoiceInfo is a", type(GetInboxInvoiceInfo))` to learn whether the legacy mail API exists (D-017).
+
 Open [TODO-INGAME] from Phase 1: map IDs; whether `QueryItem` before `SelectBrowseResult` double-searches commodities (`ItemList:SetItemID` may search itself); `AuctionHouseFrame` exists at `AUCTION_HOUSE_SHOW` on Forever (the panel assumes so; it silently does nothing otherwise); panel strata and anchoring at low UI scale; Blackwater AH reachability.
+
+Open [TODO-INGAME] from Phase 2: Blackwater and faction cut percentages (assumed 15% / 5%) and whether deposits are refunded on a sale; the hours behind duration indexes 1-3; whether `OwnedAuctionInfo.buyoutAmount` is per unit or per stack for commodities, and whether `timeLeftSeconds` is populated; whether `status == Sold` rows persist until the mail arrives (otherwise sales rely on the inferred diff); item-post `quantity` semantics (auction count vs stack); `QueryOwnedAuctions({})` accepted with an empty sorts table; `GetInboxInvoiceInfo` existence for a future mail-based confirmation; the `StartItemBuyout` hook firing for browse-row buyouts and `GetAuctionInfoByID` resolving the listing at that moment; bids are not recorded.

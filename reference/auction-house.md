@@ -77,3 +77,24 @@ Researched 2026-11-08: three research agents, plus a direct check of the API sou
 - 71 bonus ids map to 44 suffix names. Several ids share a name ("of Magic" ×4, "of the Sorcerer" ×3, …), so key analysis on name + stats, not id. The full map lives in the private collector repo (`dim/suffixes.csv`).
 - `modifiers` type 28 (values ~5244–5256) changes no visible item property.
 - The client build observed was 70862, while the local source mirror is 70790: run `scripts/sync-reference.sh` when convenient.
+
+## AH addon landscape on Forever (survey 2026-11-09; CurseForge pages fetched that day)
+| Addon | Forever | Strength | External data |
+|---|---|---|---|
+| TradeSkillMaster 4.15.x | yes (official post) | groups/operations, price sources, accounting | Desktop app → `TSM_AppHelper` |
+| Auctionator | yes | shopping lists, undercut/cancel, posting protection | local scans; shopping-list import text `Name^"Item";;…;maxGold;;` [SRC, Auctionator source snapshot 2023] |
+| Auctioneer (Forever fork) | yes | classic suite (Appraiser, BeanCounter…) | local scans |
+| AHledger | yes | tooltips, watchlist, deals | `/ahl import`; sync app uploads scans by default |
+| ProfitProphet, aux (auxForever), Hammerprice, Grimlight, ForeverForge, Forever Ledger, Journalator | yes | sniping, posting, ledgers | mostly own or shared scans |
+| Saddlebag Exchange, Oribos Exchange | Retail only / not found | | |
+
+None of them consumes an external analysis pipeline's signals or handles faction ↔ Blackwater spreads, which is the niche `addons/Wuwei` fills.
+
+## AH API constraints on Forever [SRC build 1.60.1.70790, `tools/wowapi.py`]
+- Forever uses the **modern AH UI** (`Blizzard_AuctionHouseUI/Shared`). Its only Camelot override is `Camelot/Blizzard_AuctionData.lua` (categories). `C_AuctionHouse` is the modern API.
+- **No AH API returns secret values.** Arguments are `SecretArguments=AllowedWhenUntainted`.
+- **`HasRestrictions`** (hardware event: one click = one action): `PlaceBid`, `StartCommoditiesPurchase`, `PostItem`, `PostCommodity`, `ConfirmPostItem`, `ConfirmPostCommodity`, `CancelAuction`. Reading, searching and fee calculation are unrestricted.
+- `SendSearchQuery`/`SendSellSearchQuery`: **100 calls/min** (doc comment). Use `ReplicateItems` for a whole-AH scan (community convention: at most one per 15 min).
+- Events used by pipeline-fed addons: `AUCTION_HOUSE_SHOW`/`CLOSED`, `COMMODITY_PURCHASE_SUCCEEDED`, `AUCTION_HOUSE_PURCHASE_COMPLETED`, `AUCTION_HOUSE_AUCTION_CREATED`, `OWNED_AUCTIONS_UPDATED`, `*_SEARCH_RESULTS_UPDATED`, `AUCTION_HOUSE_THROTTLED_SYSTEM_READY`.
+- SavedVariables work on live: ItemDataExport wrote and reloaded 21 MB on 2026-11-09 [INGAME]. Some addon authors reported a beta-client read-back bug. It doesn't reproduce on live.
+- Unverified on Forever: the Blackwater cut (15% in Classic), deposit (1s minimum reported, 1c announced), `PostCommodity` copper rule (Retail wiki: whole silver only).

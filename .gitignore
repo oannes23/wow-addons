@@ -8,3 +8,6 @@ reference/generated/
 __pycache__/
 # packager output
 .release/
+
+# ItemDataExport input is generated from the private AH archive (collector scripts/export_pairs.py)
+addons/ItemDataExport/Data/Pairs.lua

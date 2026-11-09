@@ -1,0 +1,13 @@
+## Interface: 16001
+## Title: ItemDataExport
+## Notes: Dev tool: resolves (item, bonus id) tuples to names, stats and tooltip text in SavedVariables for offline AH analysis
+## Author: JNS
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Misc_Note_01
+## SavedVariables: ItemDataExportDB
+## AddonCompartmentFunc: ItemDataExport_OnCompartmentClick
+
+Locales\enUS.lua
+Data\Builtin.lua
+Data\Pairs.lua
+Core.lua

@@ -6,17 +6,17 @@ Never answer an API question from memory. Training data is mostly Retail-pre-Mid
 ## tools/wowapi.py (generated docs: signatures + secrecy)
 
 ```sh
-W="uv run --no-project python tools/wowapi.py"
-$W fn UnitHealth                 # exact (bare name or Namespace.Name)
-$W fn 'C_Spell.*Cooldown*'       # glob
-$W event UNIT_AURA               # payload + flags
-$W search quest                  # substring across functions/events/tables
-$W ns C_DamageMeter              # a whole namespace or system
-$W table AuraData                # struct/enum definition (JSON)
-$W exists GetSpellInfo           # present in client globals? documented where?
-$W flagged SecretWhenCooldownsRestricted
-$W flags                         # flag histogram (diff after patches)
-$W fn X --json                   # machine-readable
+w() { uv run --no-project python tools/wowapi.py "$@"; }   # a function: zsh does not word-split a w variable
+w fn UnitHealth                 # exact (bare name or Namespace.Name)
+w fn 'C_Spell.*Cooldown*'       # glob
+w event UNIT_AURA               # payload + flags
+w search quest                  # substring across functions/events/tables
+w ns C_DamageMeter              # a whole namespace or system
+w table AuraData                # struct/enum definition (JSON)
+w exists GetSpellInfo           # present in client globals? documented where?
+w flagged SecretWhenCooldownsRestricted
+w flags                         # flag histogram (diff after patches)
+w fn X --json                   # machine-readable
 ```
 
 Exit code 1 means no match. **A missing entry means it doesn't exist in Forever unless proven otherwise.** Cross-check with `exists`, which reads Ketho's `GlobalAPI.lua` and includes undocumented globals.

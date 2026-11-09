@@ -79,8 +79,10 @@ local function OnSlash(msg)
     else
       for _, line in ipairs(ns.Ledger.Summary()) do Say(line) end
     end
+  elseif cmd == "keys" then
+    ns.Keys.Slash(rest)
   else
-    Say("usage: /wuwei [status | house <id|auto> | toggle | post | ledger [clear confirm] | probe]")
+    Say("usage: /wuwei [status | house <id|auto> | toggle | post | ledger [clear confirm] | keys [default] | probe]")
   end
 end
 
@@ -90,6 +92,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
   ns.Panel.Init()
   ns.Ledger.Init()
   ns.Post.Init()
+  ns.Keys.Init()
 end)
 
 SLASH_WUWEI1 = "/wuwei"

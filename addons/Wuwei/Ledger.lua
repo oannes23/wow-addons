@@ -279,5 +279,15 @@ function Ledger.Init()
   Ledger.events = ev
 end
 
+-- Keyboard flow (Keys.lua) calls C_AuctionHouse.StartCommoditiesPurchase directly, bypassing Blizzard's
+-- AuctionHouseFrame:StartCommoditiesPurchase that the hook above listens to, so it registers the quote context itself.
+-- COMMODITY_PRICE_UPDATED then refines unit/total and COMMODITY_PURCHASE_SUCCEEDED records, exactly as for a click.
+function Ledger.BeginBuy(itemID, qty, unit, total)
+  pendingBuy = { itemID = itemID, qty = qty, unit = unit, total = total }
+end
+
+-- Drop the in-flight quote (cancelled by the player or us); SUCCEEDED without context records nothing.
+function Ledger.EndBuy() pendingBuy = nil end
+
 -- Test seam: drop in-flight purchase/post context.
 function Ledger.ResetPending() pendingBuy, pendingPost, itemBuys = nil, nil, {} end

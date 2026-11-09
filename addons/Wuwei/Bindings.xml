@@ -1,0 +1,9 @@
+<Bindings>
+	<!-- Wuwei keyboard flow. Default keys cannot be set here (no key attribute); /wuwei keys default offers them. -->
+	<Binding name="WUWEI_ACCEPT" category="BINDING_HEADER_WUWEI">
+		Wuwei_Accept();
+	</Binding>
+	<Binding name="WUWEI_SKIP" category="BINDING_HEADER_WUWEI">
+		Wuwei_Skip();
+	</Binding>
+</Bindings>

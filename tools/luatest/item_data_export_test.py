@@ -89,7 +89,7 @@ def main() -> None:
     assert res["3195:12918"].stats.ITEM_MOD_AGILITY_SHORT == 5
     tip = res["3195:12918"].tip
     assert tip[1].leftText == "Barbaric Battle Axe of the Eagle" and tip[1].leftColor is None  # tables dropped
-    assert tip[2].rightText == "Axe" and tip[2].type == 0
+    assert tip[2].rightText == "Axe" and tip[2].type is None  # tooltip lines keep strings only
     assert db["items"][3195].name == "Barbaric Battle Axe" and db["items"][3195].equipLoc == "INVTYPE_2HWEAPON"
     assert failed["404"].startswith("load failed") and failed["999"] == "load timeout", dict(failed)
     assert list(g.requests.values()).count(999) == 2, list(g.requests.values())  # one retry after the timeout

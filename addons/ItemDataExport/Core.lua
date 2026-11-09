@@ -15,7 +15,7 @@ local pairs, ipairs, next, type, tostring, concat, floor = pairs, ipairs, next, 
 local MAX_INFLIGHT = 20 -- D-004
 local TIMEOUT = 10 -- seconds per load request
 local MAX_TRIES = 2 -- load attempts per item (and capture attempts per tuple after a successful load)
-local CACHED_PER_TICK = 50 -- already-cached items processed per tick (bounds frame time)
+local TUPLES_PER_TICK = 100 -- captures per tick from cached items (bounds frame time; ~19 ms/200 under lupa, real C calls cost more)
 local TICK = 0.1
 
 local function InitDB()
@@ -50,12 +50,13 @@ local function BuildLink(t)
   return concat(f, ":")
 end
 
-local function Plain(tbl)
-  -- Copy scalars only (tooltip lines may hold color mixins / nested tables we don't need).
+local function Plain(tbl, stringsOnly)
+  -- Copy scalars only (tooltip lines hold color mixins / nested tables we don't need). Tooltip lines keep strings
+  -- only: ~26.6k tuples x ~10 lines would otherwise bloat SavedVariables with per-line numeric fields.
   local out = {}
   for k, v in pairs(tbl) do
     local tv = type(v)
-    if tv == "string" or tv == "number" or tv == "boolean" then out[k] = v end
+    if tv == "string" or (not stringsOnly and (tv == "number" or tv == "boolean")) then out[k] = v end
   end
   return out
 end
@@ -84,7 +85,7 @@ local function Capture(t, key)
   local data = GetHyperlink(link)
   if type(data) == "table" and type(data.lines) == "table" then
     local tip = {}
-    for i, line in ipairs(data.lines) do tip[i] = Plain(line) end
+    for i, line in ipairs(data.lines) do tip[i] = Plain(line, true) end
     r.tip = tip
   end
   ns.db.results[key] = r
@@ -162,14 +163,14 @@ local function Tick()
       end
     end
   end
-  local cachedBudget = CACHED_PER_TICK
+  local budget = TUPLES_PER_TICK
   while #run.queue > 0 do
     local id = run.queue[#run.queue]
     if not run.byItem[id] or run.inflight[id] then
       run.queue[#run.queue] = nil
     elseif IsCached(id) then
-      if cachedBudget <= 0 then break end
-      cachedBudget = cachedBudget - 1
+      if budget <= 0 then break end
+      budget = budget - #run.byItem[id]
       run.queue[#run.queue] = nil
       ProcessItem(id)
     else

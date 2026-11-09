@@ -69,7 +69,7 @@ loadReq = {}
 C_Item = { GetItemNameByID = function(id) return NAMES[id] end, RequestLoadItemDataByID = function(id) loadReq[#loadReq+1] = id end }
 """
 
-TOC_LUA = ["Locales/enUS.lua", "Data/Builtin.lua", "Data/Plan.lua", "Plan.lua", "House.lua", "Ledger.lua", "Post.lua", "Tooltip.lua", "Panel.lua", "Core.lua"]
+TOC_LUA = ["Locales/enUS.lua", "Data/Builtin.lua", "Data/Plan.lua", "Plan.lua", "House.lua", "Ledger.lua", "Post.lua", "Tooltip.lua", "Panel.lua", "Keys.lua", "Core.lua"]
 
 
 def toc_files():

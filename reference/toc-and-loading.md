@@ -68,3 +68,10 @@ Prefer `EventUtil.ContinueOnAddOnLoaded(addonName, fn)` and `EventRegistry` call
 
 - Protected frames (secure action buttons, unit frames with `SecureUnitButtonTemplate`) can't be created, moved, shown, or hidden in combat from addon code. Check `InCombatLockdown()`, queue the change, and apply it on `PLAYER_REGEN_ENABLED`.
 - Never overwrite Blizzard functions/globals or call protected APIs from insecure paths. Use `hooksecurefunc` (post-hook) or `EventRegistry` callbacks. Taint spreads to everything downstream.
+
+## Key bindings (Bindings.xml)
+
+- An addon declares actions in `Bindings.xml` in its folder: `<Bindings><Binding name="MYADDON_ACTION" category="BINDING_HEADER_MYADDON">MyAddon_Action();</Binding></Bindings>` [SRC: Blizzard_Commentator/Bindings.xml, Blizzard_GroupFinder_VanillaStyle/Bindings.xml]. Blizzard's own TOCs do not list their `Bindings.xml`, so it is loaded by filename [INFER].
+- `category` is resolved via `_G[category]` for the section title in Settings > Keybindings; define `BINDING_HEADER_*` and `BINDING_NAME_<name>` globals [SRC: Blizzard_SettingsDefinitions_Frame/Keybindings.lua `GetBindingCategoryName`; Camelot override only changes `HasHousingCategory`].
+- **No default key can be declared** (no key attribute). Set one with `SetBinding(key, action)` then `SaveBindings(GetCurrentBindingSet())` (Blizzard_Commentator does this), checking `GetBindingAction(key)` first [SRC].
+- `GetBindingKey(action)` is a legacy global, not in the generated API docs (`tools/wowapi.py` finds nothing) but used by Blizzard UI (Blizzard_HUDInventoryButton.lua:120) [SRC]. [TODO-INGAME] confirm the Wuwei section appears (Wuwei SPEC checklist 19).

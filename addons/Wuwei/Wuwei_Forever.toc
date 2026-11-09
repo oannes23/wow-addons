@@ -8,4 +8,10 @@
 ## AddonCompartmentFunc: Wuwei_OnCompartmentClick
 
 Locales\enUS.lua
+Data\Builtin.lua
+Data\Plan.lua
+Plan.lua
+House.lua
+Tooltip.lua
+Panel.lua
 Core.lua

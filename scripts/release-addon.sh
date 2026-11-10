@@ -9,17 +9,20 @@ NAME="${1:?usage: release-addon.sh <Name> [--dry-run]}"; DRY="${2:-}"
 TOC="$ROOT/addons/$NAME/${NAME}_Forever.toc"
 [[ -f "$TOC" ]] || { echo "missing $TOC"; exit 1; }
 VER="$(sed -n 's/^## Version: *//p' "$TOC" | tr -d '\r')"
-[[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "TOC Version must be literal semver, got '$VER'"; exit 1; }
+[[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "TOC Version must be literal semver, got '$VER'"; exit 1; }
 TAG="$NAME-v$VER"
 [[ -z "$(git -C "$ROOT" status --porcelain -- "addons/$NAME")" ]] || { echo "addons/$NAME has uncommitted changes; commit first"; exit 1; }
+if git -C "$ROOT" rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then echo "tag $TAG already exists; bump ## Version"; exit 1; fi
+# Release notes = the CHANGELOG section for this exact version (CLAUDE.md rule 9: it must exist).
+NOTES="$(awk -v v="$VER" '$0 == "## " v || index($0, "## " v " ") == 1 {f=1; next} /^## / {f=0} f' "$ROOT/addons/$NAME/CHANGELOG.md" 2>/dev/null || true)"
+[[ -n "$NOTES" ]] || { echo "addons/$NAME/CHANGELOG.md has no '## $VER' section"; exit 1; }
 
 OUT="$ROOT/.release"; ZIP="$OUT/$NAME-$VER.zip"
 mkdir -p "$OUT"; rm -f "$ZIP"
 git -C "$ROOT" archive --format=zip --prefix="$NAME/" -o "$ZIP" "HEAD:addons/$NAME"
 echo "built $ZIP"; unzip -l "$ZIP" | sed -n '4,$p'
 
-NOTES="$(awk -v v="$VER" '$0 ~ "^## "v {f=1; next} /^## / {f=0} f' "$ROOT/addons/$NAME/CHANGELOG.md" 2>/dev/null || true)"
 if [[ "$DRY" == "--dry-run" ]]; then echo "dry run: would tag $TAG"; exit 0; fi
 git -C "$ROOT" tag -a "$TAG" -m "$NAME $VER"
 git -C "$ROOT" push origin "$TAG"
-(cd "$ROOT" && gh release create "$TAG" "$ZIP" --title "$NAME $VER" --notes "${NOTES:-$NAME $VER}")
+(cd "$ROOT" && gh release create "$TAG" "$ZIP" --title "$NAME $VER" --notes "$NOTES")

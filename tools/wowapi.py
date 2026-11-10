@@ -14,7 +14,7 @@ Usage:
   uv run tools/wowapi.py event UNIT_AURA          # event payload + flags
   uv run tools/wowapi.py search cooldown          # substring over fn/event/table names
   uv run tools/wowapi.py ns C_DamageMeter         # whole system/namespace
-  uv run tools/wowapi.py exists SomeGlobalFunc    # is it in GlobalAPI.lua (incl. undocumented)?
+  uv run tools/wowapi.py exists SomeGlobalFunc    # in GlobalAPI.lua (C globals), documented, or Lua-defined in FrameXML?
   uv run tools/wowapi.py flags                    # histogram of secrecy/restriction flags
   uv run tools/wowapi.py flagged SecretWhenUnitAuraRestricted   # list APIs carrying a flag
   uv run tools/wowapi.py overrides               # Forever-specific FrameXML override files
@@ -241,6 +241,21 @@ def global_api() -> set[str]:
     return set(parse_lua_table_file(p)) if p.exists() else set()
 
 
+def lua_defined(name: str, limit: int = 5) -> list[str]:
+    """Files in the UI source that define `name` as a Lua global (e.g. GetCVar in SharedXMLBase/CvarUtil.lua).
+    GlobalAPI.lua lists only C-side globals, so a Lua-defined one looks absent there (pitfall P-008)."""
+    pat = re.compile(rf"^(?:function\s+{re.escape(name)}\s*\(|{re.escape(name)}\s*=\s*function\b)", re.M)
+    base, out = UI_SRC / "Interface/AddOns", []
+    for f in sorted(base.rglob("*.lua")):
+        if "Blizzard_APIDocumentationGenerated" in f.parts:
+            continue
+        if pat.search(f.read_text(encoding="utf-8", errors="replace")):
+            out.append(str(f.relative_to(base)))
+            if len(out) >= limit:
+                break
+    return out
+
+
 def main(argv):
     as_json = "--json" in argv
     argv = [a for a in argv if a != "--json"]
@@ -248,15 +263,15 @@ def main(argv):
         print(__doc__); return 0
     cmd, *rest = argv
     q = rest[0] if rest else ""
-    I = idx()
     res = []
-    if cmd == "build-index":
+    if cmd == "build-index":  # before idx(): a stale index would otherwise be rebuilt twice
         INDEX_OUT.parent.mkdir(parents=True, exist_ok=True)
         data = build_index()
         INDEX_OUT.write_text(json.dumps(data, indent=1))
         print(f"wrote {INDEX_OUT.relative_to(ROOT)}: {len(data['functions'])} functions, "
               f"{len(data['events'])} events, {len(data['tables'])} tables, build {data['build']}")
         return 0
+    I = idx()
     if cmd == "fn":
         res = [e for e in I["functions"] if _match(e["name"], q)]
     elif cmd == "event":
@@ -277,7 +292,8 @@ def main(argv):
     elif cmd == "exists":
         g = global_api()
         documented = [e["name"] for e in I["functions"] if _match(e["name"], q)]
-        print(json.dumps({"query": q, "in_GlobalAPI": q in g, "documented_as": documented}, indent=1))
+        print(json.dumps({"query": q, "in_GlobalAPI": q in g, "documented_as": documented,
+                          "lua_defined_in": lua_defined(q) if q else []}, indent=1))
         return 0
     elif cmd == "flags":
         from collections import Counter

@@ -23,6 +23,6 @@ case "${1:-}" in
   --all) for d in "$ROOT"/addons/*/; do link "$(basename "$d")"; done ;;
   "") echo "usage: $0 <AddonName> [--unlink] | --all"; exit 2 ;;
   *) if [[ "${2:-}" == "--unlink" ]]; then
-       [[ -L "$DEST/$1" ]] && rm "$DEST/$1" && echo "unlinked $1"
+       if [[ -L "$DEST/$1" ]]; then rm "$DEST/$1"; echo "unlinked $1"; else echo "$1 is not linked"; fi
      else link "$1"; fi ;;
 esac

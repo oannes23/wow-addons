@@ -19,7 +19,7 @@ w flags                         # flag histogram (diff after patches)
 w fn X --json                   # machine-readable
 ```
 
-Exit code 1 means no match. **A missing entry means it doesn't exist in Forever unless proven otherwise.** Cross-check with `exists`, which reads Ketho's `GlobalAPI.lua` and includes undocumented globals.
+Exit code 1 means no match. **A missing entry means it doesn't exist in Forever unless proven otherwise.** Cross-check with `exists`, which reads Ketho's `GlobalAPI.lua` and includes undocumented globals. `GlobalAPI.lua` holds C-side globals only; `exists` also reports `lua_defined_in` for globals that FrameXML defines in Lua, such as `GetCVar` (pitfall P-008).
 
 ## rg over FrameXML (how Blizzard actually uses things)
 

@@ -1,6 +1,7 @@
 # WoW: Forever: platform ground truth
 
 Last verified: **2026-11-06** against source build **1.60.1.70790** (wow-ui-source `forever` branch, commit dated 2026-11-04). In-game checks 2026-11-06 on the live US client: `GetBuildInfo()` → `1.60.1`, `70790`, `Nov 3 2026`, `16001`, the **same build as the source mirror** (no lag).
+Mirror re-synced **2026-11-09** to source build **1.60.1.70862** (the build the live client reported that day, per auction-house.md): 9 files changed, `tools/wowapi.py flags` histogram identical to 70790, no `Camelot/`, AH or objective-tracker file touched. [SRC] line numbers cited before this date refer to 70790.
 Confidence key: **[SRC]** read directly in the local Blizzard source · **[WIKI]** warcraft.wiki.gg · **[NEWS]** secondary press/fan sites · **[INFER]** our inference · **[TODO-INGAME]** must be confirmed in the client.
 
 ## Identity

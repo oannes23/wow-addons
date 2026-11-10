@@ -35,3 +35,8 @@ Append-only. Each entry: **symptom → cause → rule**. Read this before starti
 - Symptom: `'(' expected near '<eof>'`. The message ended `...end/run QTSD=function`. Two `/run` lines (a helper definition plus a caller) were pasted into chat together, the newline was lost, and the message was cut at 255 characters.
 - Cause: we split a probe over 255 characters into dependent lines and assumed the user would send them one at a time.
 - Rule: every chat probe is **one self-contained `/run` line of 255 characters or fewer**. Check with `awk '{print length($0)}'` and parse it with `uv run --no-project --with luaparser python -I` before handing it over. If later probes need a helper, define it inside the first probe's single line. Tell the user to send each code block as its own message.
+
+## P-008 · "Not in GlobalAPI.lua" does not mean "does not exist" (2026-11-09)
+- Symptom: `wowapi.py exists GetCVar` said `in_GlobalAPI: false`, and a review nearly rewrote working code to `C_CVar.GetCVar`. Blizzard's own AH sell frame calls `GetCVar`.
+- Cause: Ketho's `GlobalAPI.lua` lists C-side globals only. `GetCVar` is a Lua function defined in `Blizzard_SharedXMLBase/CvarUtil.lua` [SRC]. Same class as P-004, opposite direction.
+- Rule: read all three fields of `exists` (`in_GlobalAPI`, `documented_as`, `lua_defined_in`). For a Lua-defined global, also check that its file's addon loads on Forever (TOC `AllowLoadGameType`) and that Blizzard code under `Shared/` or `Camelot/` calls it.

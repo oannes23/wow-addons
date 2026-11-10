@@ -10,4 +10,5 @@
 Locales\enUS.lua
 Data\Builtin.lua
 Data\Pairs.lua
+Calendar.lua
 Core.lua

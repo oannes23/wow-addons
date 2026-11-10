@@ -13,6 +13,7 @@ Target: **World of Warcraft: Forever** (codename Camelot, `WOW_PROJECT_ID` 18, c
 | [spatial-apis.md](spatial-apis.md) | Anything involving positions, distance, facing, map/minimap drawing |
 | [auction-house.md](auction-house.md) | AH market structure, addon/API data access, tooling status, economic prior art |
 | [quest-tracker.md](quest-tracker.md) | Quest log, watch list, objective tracker ordering and anchors |
+| [calendar.md](calendar.md) | Reading the in-game calendar (holidays, raid resets): global month state, event types |
 | [toc-and-loading.md](toc-and-loading.md) | Creating an addon. TOC, lifecycle, SavedVariables, settings |
 | [lookup-recipes.md](lookup-recipes.md) | Answering "does API X exist / what does it return" |
 | [pitfalls.md](pitfalls.md) | Before starting any addon work. Append when a mistake costs >1 iteration |

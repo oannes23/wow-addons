@@ -20,6 +20,7 @@ EventUtil = { ContinueOnAddOnLoaded = function(_, fn) fn() end }
 C_Timer = { NewTicker = function(_, fn) ticker = { fn = fn, Cancel = function(self) ticker = nil end } return ticker end }
 local frames = {}
 function CreateFrame() local f = { ev = {} } function f:RegisterEvent(e) self.ev[e] = true end
+  function f:UnregisterEvent(e) self.ev[e] = nil end
   function f:SetScript(_, fn) self.fn = fn end frames[#frames+1] = f return f end
 function fire(e, ...) for _, f in ipairs(frames) do if f.ev[e] then f.fn(f, e, ...) end end end
 SlashCmdList = {}

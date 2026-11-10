@@ -13,7 +13,9 @@ exclude_files = {
 read_globals = {
   "AuctionHouseSearchContext",
   "C_AuctionHouse",
+  "C_Calendar",
   "C_Container",
+  "C_DateAndTime",
   "C_Item",
   "C_Map",
   "C_QuestLog",

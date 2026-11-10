@@ -182,6 +182,12 @@ Run `/console scriptErrors 1` first (P-006). One surprising result is a [TODO-IN
 9. **House override:** `/wuwei house 117`, reopen AH: header says Blackwater. `/wuwei house auto` restores.
 10. **Real plan:** drop a generated `Data/Plan.lua` in, `/reload`, confirm `plan source:` changes and age is sane.
 
+**Results 2026-11-09 (build 70862, Orgrimmar, real plan of 84 items, player report and screenshots):**
+- 1 and 10 pass: `house: 114 (faction Horde)`, `plan source: wowf-ah-analysis a002/a003/a004`, age 15m, 65 plays, 20 shuttle items as info only.
+- `/wuwei probe` in Orgrimmar: `uiMapID: 1454 | mapName: Orgrimmar | zone: Orgrimmar | subzone: Valley of Strength | faction: Horde`.
+- 5 and 6 pass as reported (panel position, Search). 19 passes (`/wuwei keys default`). No Lua errors with `scriptErrors 1`.
+- Not yet run: 2-3 (Blackwater towns), 4, 7-9, 11-18, 20-28. Whether a key-bound Accept completes a commodity purchase (21) is still open.
+
 Phase 2 checks (11-18). Run `/console scriptErrors 1` first and label every probe (P-006); one surprising result is a [TODO-INGAME], not a finding.
 11. **Sell frame accessors.** Open the AH, Sell tab, pick a commodity (e.g. Linen Cloth) and a gear item. Expect the Wuwei box under the panel with signal, deposit, cut, net, basis. Labelled accessor probe, one line: `/run local f=AuctionHouseFrame.CommoditiesSellFrame; local l=f:GetItem(); print("commodity sell frame | item:", l and C_Item.GetItemID(l), "| dur:", f:GetDuration(), "| qty:", f:GetQuantity(), "| unit:", f:GetUnitPrice())`. Repeat with `ItemSellFrame` and `f:GetPrice()` (prints bid, buyout).
 12. **Box tracks edits.** Change price, quantity and the duration dropdown: the box updates each time (the `UpdatePostState` hook). Deselect the item: the box hides.

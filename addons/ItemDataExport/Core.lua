@@ -258,13 +258,14 @@ SlashCmdList.ITEMDATAEXPORT = function(msg)
   local cmd, arg = (msg or ""):lower():match("^%s*(%S*)%s*(%S*)")
   if cmd == "start" then Start()
   elseif cmd == "stop" then Stop()
+  elseif cmd == "calendar" then ns.DumpCalendar(arg)
   elseif cmd == "reset" then
     if arg ~= "confirm" then Say(L["/ide reset confirm clears all results"]); return end
     Stop()
     local db = ns.db
     db.items, db.results, db.failed, db.meta = {}, {}, {}, {}
     Say(L["results cleared"])
-  else Status(); Say("/ide start | stop | status | reset confirm") end
+  else Status(); Say("/ide start | stop | status | calendar [months] | reset confirm") end
 end
 
 function ItemDataExport_OnCompartmentClick()

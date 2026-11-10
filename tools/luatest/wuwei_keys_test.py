@@ -224,6 +224,69 @@ def test_skip():
     press(g, "accept"); n = len(g.ahCalls); press(g, "skip"); assert len(g.ahCalls) == n
 
 
+def test_requote_replaces_quote():
+    """A second COMMODITY_PRICE_UPDATED while quoted replaces the held quote: Accept judges the latest price."""
+    rt, ns, g = boot3()
+    K = ns.Keys
+    to_ready(g); press(g, "accept")
+    g.fire("COMMODITY_PRICE_UPDATED", 3900, 78000)                  # within buyMax 40s
+    assert K.state.phase == "quoted" and banner(g)[1].startswith("Accept: CONFIRM 20 for 7g 80s")
+    g.fire("COMMODITY_PRICE_UPDATED", 4100, 82000)                  # re-quote above buyMax
+    assert K.state.phase == "quoted" and K.state.unit == 4100 and K.state.total == 82000
+    assert banner(g)[1].startswith("Quote 41s each is over ≤ 40s: Accept cancels"), banner(g)
+    press(g, "accept")
+    assert calls(g) == [("Start", 3357, 20), ("Cancel",)], calls(g)  # cancelled, never confirmed
+    g.fire("COMMODITY_PURCHASE_SUCCEEDED"); assert len(g.WuweiDB.ledger) == 0
+    # And the other direction: a re-quote back under the limit confirms at the new price
+    to_ready(g); press(g, "accept")
+    g.fire("COMMODITY_PRICE_UPDATED", 4100, 82000); g.fire("COMMODITY_PRICE_UPDATED", 3800, 76000)
+    press(g, "accept")
+    assert [c[0] for c in calls(g)][-1] == "Confirm"
+    g.fire("COMMODITY_PURCHASE_SUCCEEDED")
+    e = g.WuweiDB.ledger[1]; assert (e.unit, e.total) == (3800, 76000)
+
+
+def test_skip_waits_for_purchase():
+    """D-031: Skip does nothing (no advance, no API call, no ledger change) while a sent purchase is under
+    PURCHASE_WAIT seconds old; afterwards it advances and the late SUCCEEDED still records the buy."""
+    rt, ns, g = boot3()
+    K = ns.Keys
+    assert K.PURCHASE_WAIT == 10
+    to_ready(g); press(g, "accept"); g.fire("COMMODITY_PRICE_UPDATED", 3900, 78000); press(g, "accept")
+    assert K.state.phase == "purchasing" and K.state.idx == 1
+    n = len(g.ahCalls)
+    before = len(g.printed)
+    press(g, "skip")
+    assert len(g.ahCalls) == n and K.state.idx == 1 and K.state.phase == "purchasing"
+    assert "waiting for the server" in out_since(g, before)
+    g.now += K.PURCHASE_WAIT - 1; press(g, "skip")                   # still inside the window
+    assert len(g.ahCalls) == n and K.state.idx == 1 and K.state.phase == "purchasing"
+    g.now += 1; press(g, "skip")                                     # window over: normal skip
+    assert len(g.ahCalls) == n and K.state.idx == 2 and K.state.phase == "idle"
+    g.fire("COMMODITY_PURCHASE_SUCCEEDED")                           # late answer: context was kept
+    e = g.WuweiDB.ledger[1]; assert (e.kind, e.itemID, e.qty, e.total) == ("buy", 3357, 20, 78000)
+    # A purchase that completes inside the window releases Skip at once
+    for _ in range(4): press(g, "skip")
+    assert K.state.idx == 1
+    to_ready(g); press(g, "accept"); g.fire("COMMODITY_PRICE_UPDATED", 3900, 78000); press(g, "accept")
+    g.fire("COMMODITY_PURCHASE_SUCCEEDED"); assert K.state.phase == "idle"
+    press(g, "skip"); assert K.state.idx == 2
+
+
+def test_toggle_off_hides_everything():
+    """/wuwei toggle off hides the panel, the post box and the keys banner, not just the panel."""
+    rt, ns, g = boot3()
+    ah = g.AuctionHouseFrame
+    cf = ah.CommoditiesSellFrame
+    cf.shown = True; cf.item = g.mkLoc(4338); cf.qty = 5; cf.price = 500; cf.UpdatePostState(cf)
+    box = g.WuweiPostFrame
+    assert ns.Panel.frame.shown and g.WuweiKeysFrame.shown and box.shown
+    g.SlashCmdList["WUWEI"]("toggle")
+    assert g.WuweiDB.enabled is False
+    assert not ns.Panel.frame.shown and not g.WuweiKeysFrame.shown and not box.shown
+    g.SlashCmdList["WUWEI"]("toggle"); assert g.WuweiDB.enabled is True
+
+
 def test_sell_never_posts():
     rt, ns, g = boot3()
     K = ns.Keys
@@ -399,6 +462,9 @@ def main():
     test_nothing_available()
     test_quote_expiry_restarts()
     test_skip()
+    test_requote_replaces_quote()
+    test_skip_waits_for_purchase()
+    test_toggle_off_hides_everything()
     test_sell_never_posts()
     test_gear_and_misc()
     test_bindings_and_slash()

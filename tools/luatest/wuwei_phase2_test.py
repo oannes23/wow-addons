@@ -297,6 +297,85 @@ def test_cost_basis_pnl_cap_slash():
     slash("post"); assert g.WuweiDB.post is False; slash("post"); assert g.WuweiDB.post is True
 
 
+def test_partial_sales():
+    """D-029: a shrinking quantity on a still-listed auction records the difference as a partial sold entry."""
+    rt, ns, g, ah = boot2()
+    L = lambda: g.WuweiDB.ledger
+    snap(rt, g, A(1, 3357, 99, 400, 9000)); g.fire("OWNED_AUCTIONS_UPDATED")        # baseline: known, no entries
+    snap(rt, g, A(901, 4338, 30, 400, 9000)); g.fire("OWNED_AUCTIONS_UPDATED")      # new auction after the baseline
+    assert [(e.kind, e.qty) for e in L().values()] == [("post", 30), ("sold", 99)]   # 99 vanished early
+    n = len(L())
+    snap(rt, g, A(901, 4338, 30, 400, 8000)); g.fire("OWNED_AUCTIONS_UPDATED"); assert len(L()) == n    # unchanged
+    snap(rt, g, A(901, 4338, 20, 400, 7000)); g.fire("OWNED_AUCTIONS_UPDATED")                           # 10 filled
+    e = L()[n + 1]
+    assert (e.kind, e.itemID, e.qty, e.unit, e.auctionID, e.inferred, e.partial, e.src) == \
+        ("sold", 4338, 10, 400, 901, True, True, "OWNED_AUCTIONS_UPDATED") and len(L()) == n + 1
+    assert g.WuweiDB.ledgerState.owned[901].qty == 20
+    g.fire("OWNED_AUCTIONS_UPDATED"); assert len(L()) == n + 1                                          # idempotent
+    snap(rt, g, A(901, 4338, 25, 400, 6000)); g.fire("OWNED_AUCTIONS_UPDATED")                           # grew: silent
+    assert len(L()) == n + 1 and g.WuweiDB.ledgerState.owned[901].qty == 25
+    snap(rt, g, A(901, 4338, 5, 400, 5000)); g.fire("OWNED_AUCTIONS_UPDATED")
+    e = L()[n + 2]; assert (e.kind, e.qty, e.partial) == ("sold", 20, True)
+    g.server += 100; snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")                                       # remainder vanishes
+    e = L()[n + 3]
+    assert (e.kind, e.qty, e.partial, e.inferred) == ("sold", 5, None, True) and len(L()) == n + 3
+    # Same remainder logic for expiry: the expired entry covers only what is left
+    snap(rt, g, A(902, 2589, 100, 40, 300)); g.fire("OWNED_AUCTIONS_UPDATED")
+    snap(rt, g, A(902, 2589, 60, 40, 200)); g.fire("OWNED_AUCTIONS_UPDATED")
+    g.server += 300; snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")
+    tail = [(x.kind, x.qty, x.partial) for x in list(L().values())[-3:]]
+    assert tail == [("post", 100, None), ("sold", 40, True), ("expired", 60, None)], tail
+    # status Sold with a smaller quantity is the API's own sale record: no partial entry, one sold entry for rec.qty
+    snap(rt, g, A(903, 4304, 10, 500, 9000)); g.fire("OWNED_AUCTIONS_UPDATED")
+    m = len(L())
+    snap(rt, g, A(903, 4304, 4, 500, 9000, 1)); g.fire("OWNED_AUCTIONS_UPDATED")
+    e = L()[m + 1]; assert (e.kind, e.qty, e.partial) == ("sold", 10, None) and len(L()) == m + 1
+
+
+def test_house_confidence_guard():
+    """D-030: Detect returns a confidence flag; an unconfident house never drives the owned-auction diff."""
+    rt, ns, g, ah = boot2()
+    H = ns.House
+    conf = lambda: bool(tuple(H.Detect())[2])
+    assert conf()                                                    # Orgrimmar, Horde
+    g.zone = "Thunder Bluff"; assert conf()
+    g.zone = "Undercity"; assert conf()
+    g.zone = "Stranglethorn Vale"; assert not conf() and tuple(H.Detect())[0] == 114   # faction fallback, not a capital
+    g.zone = "Stormwind City"; assert not conf()                     # Alliance capital while Horde: not a match
+    g.faction = "Alliance"; assert conf() and tuple(H.Detect())[0] == 111
+    g.zone = "Ironforge"; assert conf(); g.zone = "Darnassus"; assert conf()
+    g.faction = None; assert not conf(); g.faction = "Horde"
+    g.zone, g.subzone = "Stranglethorn Vale", "Booty Bay"; assert conf()   # Blackwater zone match
+    g.zone, g.subzone = "Orgrimmar", ""
+    H.BLACKWATER_MAPS[999] = True; g.mapID = 999; assert conf(); g.mapID = 85
+    g.zone = "Ratchet"; assert not conf(); H.Set("114"); assert conf(); H.Set("auto")   # override is confident
+    g.zone = "Orgrimmar"
+    # Guard: standing at an unrecognised AH, a snapshot that lacks every stored auction changes nothing
+    snap(rt, g, A(1, 4338, 5, 400, 9000)); g.fire("OWNED_AUCTIONS_UPDATED")             # baseline at 114, confident
+    snap(rt, g, A(2, 4304, 1, 8000, 9000)); g.fire("OWNED_AUCTIONS_UPDATED")            # 'post' entry for 2, 1 is gone
+    n = len(g.WuweiDB.ledger)
+    owned_before = sorted(k for k in g.WuweiDB.ledgerState.owned.keys())
+    g.zone = "Ratchet"
+    snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")
+    snap(rt, g, A(77, 2589, 3, 40, 9000)); g.fire("OWNED_AUCTIONS_UPDATED")
+    assert len(g.WuweiDB.ledger) == n and sorted(g.WuweiDB.ledgerState.owned.keys()) == owned_before
+    ns.Ledger.OnOwnedUpdated()                                        # direct call too
+    assert len(g.WuweiDB.ledger) == n
+    g.zone = "Orgrimmar"; snap(rt, g, A(2, 4304, 1, 8000, 9000)); g.fire("OWNED_AUCTIONS_UPDATED")   # confident again: works
+    assert len(g.WuweiDB.ledger) == n and 2 in list(g.WuweiDB.ledgerState.owned.keys())
+    snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED"); assert len(g.WuweiDB.ledger) == n + 1
+    # A fresh DB does not baseline while unconfident
+    rt2, ns2, g2, _ = boot2(); g2.zone = "Ratchet"
+    snap(rt2, g2, A(5, 4338, 1, 400, 9000)); g2.fire("OWNED_AUCTIONS_UPDATED")
+    assert not g2.WuweiDB.ledgerState.baselined and len(list(g2.WuweiDB.ledgerState.owned.keys())) == 0
+    # /wuwei status says so and names the fix; a confident house does not
+    before = len(g2.printed); g2.SlashCmdList["WUWEI"]("status")
+    out = "\n".join(strip(x) for x in list(g2.printed.values())[before:])
+    assert "NOT confident" in out and "/wuwei house <id>" in out, out
+    g2.zone = "Orgrimmar"; before = len(g2.printed); g2.SlashCmdList["WUWEI"]("status")
+    assert "NOT confident" not in "\n".join(strip(x) for x in list(g2.printed.values())[before:])
+
+
 FORBIDDEN = re.compile(
     r"C_AuctionHouse\s*[.:]\s*(PostItem|PostCommodity|ConfirmPostItem|ConfirmPostCommodity|PlaceBid|"
     r"StartCommoditiesPurchase|ConfirmCommoditiesPurchase|CancelAuction|CancelSell)\b|"
@@ -329,6 +408,8 @@ def main():
     test_protection_warnings()
     test_ledger_events()
     test_cost_basis_pnl_cap_slash()
+    test_partial_sales()
+    test_house_confidence_guard()
     test_no_restricted_calls()
     print("Wuwei phase 2 harness: OK")
 

@@ -1,9 +1,8 @@
 -- Wuwei · WoW: Forever (Interface 16001, WOW_PROJECT_CAMELOT)
 -- Phase 1: plan data, tooltip line, AH side panel, house detection. Phase 2: post helper, trade ledger. No AH data here is secret-valued.
 local addonName, ns = ...
-local L = ns.L
 
-local format, tonumber = string.format, tonumber
+local format = string.format
 
 local DEFAULTS = {
   version = 1,
@@ -27,11 +26,15 @@ local function Say(msg) print("|cff00ccffWuwei|r " .. msg) end
 
 local function Status()
   local Plan, p = ns.Plan, ns.Plan.Get()
-  local house, reason = ns.House.Detect()
+  local house, reason, confident = ns.House.Detect()
   local n = 0
   if p and p.items then for _ in pairs(p.items) do n = n + 1 end end
   Say(format("enabled: %s", tostring(ns.db.enabled)))
   Say(format("house: %s (%s)", tostring(house), reason))
+  if not confident then
+    Say("house detection is NOT confident (not at a recognised AH): the ledger will not judge your auctions here. "
+      .. "Set it with /wuwei house <id> (111 Alliance, 114 Horde, 117 Blackwater).")
+  end
   Say(format("plan source: %s | generated: %s | age: %s | items: %d",
     Plan.IsBuiltin() and "BUILTIN SAMPLE (no Data/Plan.lua)" or tostring(p.source), tostring(p and p.generated),
     Plan.AgeText(), n))
@@ -61,7 +64,7 @@ local function OnSlash(msg)
     end
   elseif cmd == "toggle" then
     ns.db.enabled = not ns.db.enabled
-    if not ns.db.enabled then ns.Panel.Hide() end
+    if not ns.db.enabled then ns.Panel.Hide() ns.Post.Hide() ns.Keys.Banner.Hide() end
     Say(format("enabled: %s", tostring(ns.db.enabled)))
   elseif cmd == "shuttle" then
     local arg = rest:lower()

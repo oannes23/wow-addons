@@ -1,6 +1,6 @@
 -- AH side panel: today's plays for this house, anchored right of AuctionHouseFrame. Phase 1 only searches and
 -- hands off to Blizzard's buy UI; it never calls a HasRestrictions API (PlaceBid, StartCommoditiesPurchase, Post*).
-local addonName, ns = ...
+local _, ns = ...
 local L = ns.L
 
 local GetTime, floor, format, ipairs = GetTime, math.floor, string.format, ipairs
@@ -30,10 +30,17 @@ end
 local Panel = {}
 ns.Panel = Panel
 
+-- One load request per item per session. Re-requesting on every refresh would loop on an item that never loads:
+-- request -> ITEM_DATA_LOAD_RESULT(false) -> Refresh -> request ...
+local requested = {}
+
 local function ItemName(id)
   local name = C_Item.GetItemNameByID(id)
   if name then return name end
-  C_Item.RequestLoadItemDataByID(id) -- ITEM_DATA_LOAD_RESULT triggers a refresh
+  if not requested[id] then
+    requested[id] = true
+    C_Item.RequestLoadItemDataByID(id) -- ITEM_DATA_LOAD_RESULT triggers a refresh
+  end
   return "item:" .. id
 end
 
@@ -51,7 +58,7 @@ function Panel.BuildRows(house)
   return rows
 end
 
-function Panel.HeaderText(house, reason)
+function Panel.HeaderText(house)
   local Plan = ns.Plan
   local hname = house and format("%s AH (%d)", Plan.HouseName(house), house) or L["unknown AH"]
   local regime = Plan.Regime(house)
@@ -137,8 +144,8 @@ end
 function Panel.Refresh()
   local f = Panel.frame
   if not (f and f:IsShown()) then return end
-  local house, reason = ns.House.Detect()
-  f.header:SetText(Panel.HeaderText(house, reason))
+  local house = ns.House.Detect()
+  f.header:SetText(Panel.HeaderText(house))
   local rows = house and Panel.BuildRows(house) or {}
   f.empty:SetText(#rows == 0 and (house and L["No plays for this house in the current plan."] or
     L["House unknown. Use /wuwei house <id>."]) or "")
@@ -180,10 +187,10 @@ function Panel.Init()
   ev:RegisterEvent("AUCTION_HOUSE_SHOW")
   ev:RegisterEvent("AUCTION_HOUSE_CLOSED")
   ev:RegisterEvent("ITEM_DATA_LOAD_RESULT")
-  ev:SetScript("OnEvent", function(_, event)
+  ev:SetScript("OnEvent", function(_, event, itemID)
     if event == "AUCTION_HOUSE_SHOW" then Panel.Show()
     elseif event == "AUCTION_HOUSE_CLOSED" then Panel.Hide()
-    else Panel.Refresh() end
+    elseif requested[itemID] then Panel.Refresh() end -- only our own name loads; browsing fires this event constantly
   end)
   Panel.events = ev
 end

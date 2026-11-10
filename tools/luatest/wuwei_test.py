@@ -133,7 +133,11 @@ def main() -> None:
     assert ns.House.Set("111") and det() == 111                       # manual override wins
     assert ns.House.Set("auto") and det() == 114
     assert not ns.House.Set("banana")
-    g.faction = None; h, why = ns.House.Detect(); assert h is None and "unknown" in why; g.faction = "Horde"
+    g.faction = None; h, why, conf = ns.House.Detect(); assert h is None and "unknown" in why and conf is False
+    g.faction = "Horde"
+    h, why, conf = ns.House.Detect(); assert (h, conf) == (114, True)             # Orgrimmar: faction capital
+    g.zone = "Ratchet"; h, why, conf = ns.House.Detect(); assert (h, conf) == (114, False)   # fallback outside a capital
+    g.zone = "Orgrimmar"
 
     # --- Tooltip text (at Horde AH 114, plan 42m old)
     line = strip_colors(ns.Tooltip.Line(4304))
@@ -230,6 +234,7 @@ def main() -> None:
     out = "\n".join(strip_colors(p) for p in g4.printed.values())
     assert "house: 114 (faction Horde)" in out and "BUILTIN SAMPLE" in out and "uiMapID: 85" in out and "usage:" in out, out
     test_shuttle_off()
+    test_panel_load_requests()
     print("Wuwei harness: OK")
 
 
@@ -258,6 +263,27 @@ def test_shuttle_off():
     slash("shuttle off"); slash("status")
     out = "\n".join(strip_colors(p) for p in g.printed.values())
     assert "shuttle: off (faction AH only" in out and "shuttle: off (2 shuttle items shown as info only)" in out, out
+
+
+def test_panel_load_requests():
+    """An item whose name never loads is requested once, however often the panel refreshes; load results for items the
+    panel never asked for do not refresh it."""
+    rt, ns = boot(); g = rt.globals()
+    g.WuweiDB.shuttle = True                                         # Liferoot is row 1 only with the shuttle on
+    g.NAMES[3357] = None
+    ah = g.mkAH(); ah.shown = True; g.fire("AUCTION_HOUSE_SHOW")
+    f = ns.Panel.frame
+    for _ in range(5): ns.Panel.Refresh()
+    g.fire("ITEM_DATA_LOAD_RESULT", 3357, False)                    # load failed: refresh, but no second request
+    for _ in range(3): ns.Panel.Refresh()
+    assert list(g.loadReq.values()) == [3357], list(g.loadReq.values())
+    assert f.rows[1].name.text == "item:3357"
+    g.NAMES[3357] = "Liferoot"                                       # now loadable, but nobody told the panel
+    g.fire("ITEM_DATA_LOAD_RESULT", 99999, True)                     # an item the panel never requested
+    g.fire("ITEM_DATA_LOAD_RESULT", 4304, True)                      # in the plan, named, never requested
+    assert f.rows[1].name.text == "item:3357"                        # no refresh happened
+    g.fire("ITEM_DATA_LOAD_RESULT", 3357, True)
+    assert f.rows[1].name.text == "Liferoot" and list(g.loadReq.values()) == [3357]
 
 
 def smoke_generated_plan():

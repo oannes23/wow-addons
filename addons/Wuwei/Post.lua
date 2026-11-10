@@ -4,7 +4,7 @@
 -- Refresh trigger: hooksecurefunc post-hook on the sell frames' UpdatePostState, which Blizzard calls on every item,
 -- quantity, price and duration change (Blizzard_AuctionHouseSellFrame.lua:338, SetItem, OnDurationUpdated, price
 -- callbacks). No taint, and no OnUpdate polling needed.
-local addonName, ns = ...
+local _, ns = ...
 local L = ns.L
 
 local format, floor, ipairs = string.format, math.floor, ipairs

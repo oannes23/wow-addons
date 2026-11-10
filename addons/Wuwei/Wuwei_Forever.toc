@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Wuwei
 ## Notes: Surfaces the right AH action at the right moment from your market pipeline (buy, sell, shuttle, hold)
-## Author: JNS
+## Author: oannes23
 ## Version: 0.1.0
 ## IconTexture: Interface\Icons\INV_Misc_QuestionMark
 ## SavedVariables: WuweiDB

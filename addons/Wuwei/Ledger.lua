@@ -1,7 +1,7 @@
 -- Trade ledger: purchases, posts, sales, cancels and expiries, stored in WuweiDB.ledger (schema: SPEC "Ledger export").
 -- Everything here is event- or hook-driven and read-only: no PostItem/PostCommodity/PlaceBid/Start*Purchase/CancelAuction
 -- calls (all HasRestrictions). Hooks are hooksecurefunc post-hooks on Blizzard's own methods, so nothing is tainted.
-local addonName, ns = ...
+local _, ns = ...
 
 local floor, min, ipairs, pairs, sort, tremove = math.floor, math.min, ipairs, pairs, table.sort, table.remove
 
@@ -122,9 +122,12 @@ local SOLD = (Enum and Enum.AuctionStatus and Enum.AuctionStatus.Sold) or 1
 
 function Ledger.OnOwnedUpdated()
   if not (ns.db and C_AuctionHouse and C_AuctionHouse.GetOwnedAuctions) then return end
+  -- An unconfident house guess (unrecognised AH, faction fallback) would make every stored auction of the guessed
+  -- house look vanished: touch nothing. SPEC D-030.
+  local house, _, confident = ns.House.Detect()
+  if not confident then return end
   local st = State()
   local owned = st.owned
-  local house = ns.House.Detect()
   local now = GetServerTime()
   local seen = {}
   for _, info in ipairs(C_AuctionHouse.GetOwnedAuctions() or {}) do
@@ -138,6 +141,16 @@ function Ledger.OnOwnedUpdated()
       if st.baselined and rec.itemID then
         Ledger.Add("post", rec.itemID, rec.qty, rec.unit, "OWNED_AUCTIONS_UPDATED", { auctionID = id, inferred = true })
       end
+    end
+    -- Partial commodity fill: the quantity shrank while the auction is still up. Record the difference as sold and
+    -- carry on with the remainder (so a later vanish/expiry covers only what is left). Growth just updates. D-029.
+    local q = info.quantity
+    if q and q ~= rec.qty and info.status ~= SOLD and not rec.sold then
+      if q < rec.qty and rec.itemID then
+        Ledger.Add("sold", rec.itemID, rec.qty - q, rec.unit, "OWNED_AUCTIONS_UPDATED",
+          { auctionID = id, inferred = true, partial = true })
+      end
+      rec.qty = q
     end
     rec.expires = info.timeLeftSeconds and (now + info.timeLeftSeconds) or rec.expires
     if info.status == SOLD and not rec.sold and rec.itemID then
@@ -257,7 +270,7 @@ function Ledger.Hook()
   -- Called by Blizzard only after PostCommodity/PostItem succeeded: (self, item, duration, quantity, ...).
   for _, key in ipairs({ "CommoditiesSellFrame", "ItemSellFrame" }) do
     local f = ahf[key]
-    SafeHook(f, "CachePendingPost", function(self, item, duration, qty, a, b)
+    SafeHook(f, "CachePendingPost", function(_, item, _, qty, a, b)
       local isCommodity = key == "CommoditiesSellFrame"
       pendingPost = { itemID = C_Item.GetItemID(item), qty = qty, unit = isCommodity and a or (b or a),
         isCommodity = isCommodity, left = qty }

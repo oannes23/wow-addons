@@ -1,5 +1,5 @@
 -- Plan accessors: item lookup, per-house plays sorted by gain, data age, money formatting.
-local addonName, ns = ...
+local _, ns = ...
 
 local pairs, type, tonumber, floor, sort, format = pairs, type, tonumber, math.floor, table.sort, string.format
 

@@ -1,7 +1,7 @@
 -- One quiet tooltip line for items in the plan: "Wuwei: SHUTTLE → BW ≥ 65s · ref 3s 60c · 42m".
 -- Shuttle toggle off (default): "Wuwei: SELL ≥ 2s · ref 2s 10c · BW ≥ 65s (2.4×) shuttle off · 42m", or for an item
 -- whose only play is the shuttle, "Wuwei: SHUTTLE (off) → BW ≥ 65s (2.4×) · ref 3s 60c · 42m" (information only).
-local addonName, ns = ...
+local _, ns = ...
 
 local Tooltip = {}
 ns.Tooltip = Tooltip

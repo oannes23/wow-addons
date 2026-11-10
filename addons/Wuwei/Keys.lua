@@ -7,16 +7,17 @@
 -- from Keys.Accept / Keys.Skip (called by the binding handlers), and a runtime gate refuses them outside a press and
 -- after the first one in a press. Event handlers only read state and update the banner. tools/luatest/wuwei_keys_test.py
 -- greps for all of this.
-local addonName, ns = ...
+local _, ns = ...
 local L = ns.L
 
-local format, floor, min, ipairs = string.format, math.floor, math.min, ipairs
+local format, min, ipairs = string.format, math.min, ipairs
 local GetTime = GetTime
 
 local Keys = {}
 ns.Keys = Keys
 
 Keys.DEFAULTS = { WUWEI_ACCEPT = "]", WUWEI_SKIP = "[" } -- offered by `/wuwei keys default`, never forced (D-023)
+Keys.PURCHASE_WAIT = 10 -- s: Skip refuses to move on while a sent purchase has had less than this to answer (D-031)
 Keys.SEARCH_RETRY = 5 -- s: a search that never produced COMMODITY_SEARCH_RESULTS_UPDATED may be re-sent after this
 
 -- phase: idle -> searching -> ready -> quoting -> quoted -> purchasing -> idle
@@ -57,7 +58,7 @@ local function Current()
 end
 
 function Keys.Reset()
-  S.phase, S.qty, S.unit, S.total, S.searchAt, S.note = "idle", nil, nil, nil, nil, nil
+  S.phase, S.qty, S.unit, S.total, S.searchAt, S.note, S.purchasingAt = "idle", nil, nil, nil, nil, nil, nil
 end
 
 local function AHOpen()
@@ -267,7 +268,7 @@ local function DoQuoted(play)
     return DoStart(play) -- restart from step 2 (one purchase call this press)
   end
   if S.unit and S.unit <= it.buyMax and S.total <= it.buyMax * S.qty then
-    S.phase = "purchasing"
+    S.phase, S.purchasingAt = "purchasing", GetTime()
     ConfirmQuote(play.id, S.qty)
     Say(format(L["Confirming %d × %s for %s."], S.qty, ItemName(play.id), ns.Plan.Money(S.total)))
   else
@@ -309,13 +310,20 @@ local function AcceptImpl()
 end
 
 local function SkipImpl()
+  -- A purchase is in flight: moving on could let the next buy's BeginBuy overwrite the ledger context before this
+  -- one's COMMODITY_PURCHASE_SUCCEEDED arrives. Wait for the server, up to PURCHASE_WAIT. D-031.
+  if S.phase == "purchasing" and S.purchasingAt and GetTime() - S.purchasingAt < Keys.PURCHASE_WAIT then
+    Say(L["Purchase sent; waiting for the server before skipping."])
+    return
+  end
   local n = #S.queue
   if n == 0 then Keys.Rebuild() n = #S.queue end
   if S.phase == "quoting" or S.phase == "quoted" then
     CancelQuote()
     Say(L["Skipped: pending quote cancelled."])
   end
-  ns.Ledger.EndBuy()
+  -- A purchase already sent still completes on the server: keep its ledger context so SUCCEEDED records the buy.
+  if S.phase ~= "purchasing" then ns.Ledger.EndBuy() end
   Keys.Reset()
   S.gear = nil
   if n > 0 then S.idx = S.idx % n + 1 end
@@ -350,7 +358,13 @@ function H.COMMODITY_SEARCH_RESULTS_UPDATED(itemID)
 end
 
 function H.COMMODITY_PRICE_UPDATED(unit, total)
-  if S.phase == "quoting" then S.unit, S.total, S.phase = unit, total, "quoted" end
+  if S.phase == "quoting" then
+    S.unit, S.total, S.phase = unit, total, "quoted"
+  elseif S.phase == "quoted" then
+    -- A re-quote while we hold one (Blizzard's BuyDialog handles this as PriceUpdated): Confirm must judge the
+    -- latest price against buyMax, never the first one.
+    S.unit, S.total = unit, total
+  end
 end
 
 function H.COMMODITY_PURCHASE_SUCCEEDED()

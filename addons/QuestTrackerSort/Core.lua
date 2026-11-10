@@ -46,7 +46,7 @@ function ns.SetMode(mode)
 end
 
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function(_, event, ...)
+events:SetScript("OnEvent", function(_, event)
   if event == "QUEST_WATCH_LIST_CHANGED" then
     if not Sort.busy then Sort.Schedule(0.5) end
   elseif event == "PLAYER_REGEN_DISABLED" then

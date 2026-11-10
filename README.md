@@ -10,12 +10,18 @@ scripts/release-addon.sh MyAddon   # tag + GitHub release with an install-ready 
 uv run --no-project python tools/wowapi.py fn UnitHealth
 ```
 
+CI (`.github/workflows/ci.yml`): `tools/check_toc.py`, the `tools/luatest/*_test.py` Lua harnesses, and luacheck (`.luacheckrc`).
+
 Knowledge base: [reference/README.md](reference/README.md). Agent instructions: [CLAUDE.md](CLAUDE.md).
 
 ## Addons
 | Addon | What it does | Version |
 |---|---|---|
 | [QuestTrackerSort](addons/QuestTrackerSort) | Sorts the Quests tracker by distance or level instead of newest-first | 1.0.0 |
+| [Wuwei](addons/Wuwei) | Surfaces AH plays (buy, sell, shuttle, hold) from an external market pipeline; needs a generated `Data/Plan.lua` | 0.1.0, in development, unreleased |
+| [ItemDataExport](addons/ItemDataExport) | Dev tool: resolves item and suffix tuples to names, stats and tooltip text in SavedVariables | 0.1.0, dev tool, unreleased |
+
+Offline tests (Lua 5.1 via lupa, mocked WoW API): `for t in tools/luatest/*_test.py; do uv run --no-project --with lupa python "$t"; done`
 
 Players: download addon zips from [Releases](https://github.com/oannes23/wow-addons/releases).
 

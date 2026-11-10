@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+
+      - name: TOC check
+        run: uv run --no-project python tools/check_toc.py
+
+      - name: Lua harnesses
+        run: |
+          set -e
+          for t in tools/luatest/*_test.py; do
+            echo "== $t"
+            uv run --no-project --with lupa python "$t"
+          done
+
+      - name: Luacheck
+        uses: lunarmodules/luacheck@v1.2.0
+        with:
+          args: addons/ --no-color

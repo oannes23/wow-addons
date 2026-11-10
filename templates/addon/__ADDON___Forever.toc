@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: __ADDON__
 ## Notes: __NOTES__
-## Author: JNS
+## Author: oannes23
 ## Version: 0.1.0
 ## IconTexture: Interface\Icons\INV_Misc_QuestionMark
 ## SavedVariables: __ADDON__DB

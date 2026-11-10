@@ -14,6 +14,7 @@ reference/            knowledge base: read reference/README.md first
 addons/<Name>/        one addon per dir; dir name == TOC base name
 templates/addon/      scaffold used by scripts/new-addon.sh
 tools/wowapi.py       API/event/flag lookup over generated docs (stdlib Python)
+tools/luatest/        offline harnesses: run addon Lua in Lua 5.1 (lupa) against mocked WoW APIs
 scripts/              sync-reference.sh · new-addon.sh · link-addon.sh · release-addon.sh
 .claude/skills/       wow-api · wow-new-addon · wow-kb-update
 ```
@@ -24,6 +25,7 @@ scripts/sync-reference.sh                         # fresh clone / after each pat
 uv run --no-project python tools/wowapi.py fn <Name|glob>    # also: event, search, ns, table, exists, flagged, flags, overrides
 scripts/new-addon.sh <PascalName> "notes"         # scaffold
 scripts/link-addon.sh <Name>                      # symlink into /Applications/World of Warcraft/_forever_/Interface/AddOns
+for t in tools/luatest/*_test.py; do uv run --no-project --with lupa python "$t"; done   # offline tests; run after any addon Lua change
 ```
 In-game dev loop: edit → `/reload`. Use `/dump expr`, `/etrace` (event trace), `/fstack` (frame stack). Lua errors show with `/console scriptErrors 1`.
 

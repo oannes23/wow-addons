@@ -135,7 +135,7 @@ local function ProcessItem(id)
   end
   if #left > 0 then
     run.byItem[id] = left
-    run.queue[#run.queue + 1] = id -- capture again on a later tick
+    run.queue[#run.queue + 1] = id -- retried by Tick's queue loop (same tick if budget remains), up to MAX_TRIES
   else
     run.byItem[id] = nil
   end

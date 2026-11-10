@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: ItemDataExport
 ## Notes: Dev tool: resolves (item, bonus id) tuples to names, stats and tooltip text in SavedVariables for offline AH analysis
-## Author: JNS
+## Author: oannes23
 ## Version: 0.1.0
 ## IconTexture: Interface\Icons\INV_Misc_Note_01
 ## SavedVariables: ItemDataExportDB

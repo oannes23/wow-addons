@@ -2,7 +2,7 @@
 -- /ide calendar [months]: walks the in-game calendar and stores every system day event (holidays, raid resets)
 -- in ItemDataExportDB.calendar for the offline importer. Player, guild and community events are skipped.
 -- Loads before Core.lua; Core's slash handler calls ns.DumpCalendar. Nothing here is secret-valued data we branch on.
-local addonName, ns = ...
+local _, ns = ...
 local L = ns.L
 
 local C_Calendar, C_DateAndTime, C_Timer = C_Calendar, C_DateAndTime, C_Timer
@@ -16,9 +16,7 @@ local WAIT = 3 -- seconds to wait for CALENDAR_UPDATE_EVENT_LIST after OpenCalen
 local MAX_ATTEMPTS = 2 -- the walk is repeated once if the first one found nothing (data may arrive late)
 local SKIP = { PLAYER = true, GUILD_ANNOUNCEMENT = true, GUILD_EVENT = true, COMMUNITY_EVENT = true }
 
-local function Say(msg)
-  print("|cff33ff99" .. addonName .. "|r " .. msg)
-end
+local Say = ns.Say
 
 local function Stamp(t)
   if type(t) ~= "table" or not t.year or not t.month or not t.monthDay then return nil end
@@ -150,3 +148,5 @@ function ns.DumpCalendar(arg)
   Say(L["calendar: walking %d months from %04d-%02d"]:format(months, cur.year, cur.month))
   WaitThenWalk()
 end
+
+ns.RegisterCommand("calendar", function(arg) ns.DumpCalendar(arg) end, "calendar [months]")

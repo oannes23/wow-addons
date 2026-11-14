@@ -64,12 +64,13 @@ C_AuctionHouse = {
   MakeItemKey = function(id) return { itemID = id } end,
   GetItemKeyInfo = function(key) return commodity and { isCommodity = true } or nil end,
 }
-NAMES = { [4304] = "Thick Leather", [4338] = "Mageweave Cloth", [3357] = "Liferoot", [2772] = "Iron Ore", [8153] = "Wildvine", [2589] = "Linen Cloth" }
+NAMES = { [4304] = "Thick Leather", [4338] = "Mageweave Cloth", [3357] = "Liferoot", [2772] = "Iron Ore", [8153] = "Wildvine", [2589] = "Linen Cloth",
+          [13518] = "Recipe: Sample", [8485] = "Cat Carrier (Bombay)", [13335] = "Deathcharger's Reins", [12784] = "Arcanite Reaper" }  -- builtin steals sample
 loadReq = {}
 C_Item = { GetItemNameByID = function(id) return NAMES[id] end, RequestLoadItemDataByID = function(id) loadReq[#loadReq+1] = id end }
 """
 
-TOC_LUA = ["Locales/enUS.lua", "Data/Builtin.lua", "Data/Plan.lua", "Plan.lua", "House.lua", "Ledger.lua", "Post.lua", "Tooltip.lua", "Panel.lua", "Keys.lua", "Core.lua"]
+TOC_LUA = ["Locales/enUS.lua", "Data/Builtin.lua", "Data/Plan.lua", "Plan.lua", "House.lua", "Ledger.lua", "Post.lua", "Tooltip.lua", "Panel.lua", "Steals.lua", "Keys.lua", "Core.lua"]
 
 
 def toc_files():

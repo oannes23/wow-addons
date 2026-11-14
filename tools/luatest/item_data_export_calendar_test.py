@@ -62,7 +62,7 @@ def main() -> None:
     rt.execute(CAL_MOCK)
     g = rt.globals()
     ns = rt.table()
-    base.load(rt, ns, ["Locales/enUS.lua", "Data/Builtin.lua", "Calendar.lua", "Core.lua"])
+    base.load(rt, ns, ["Locales/enUS.lua", "Data/Builtin.lua", "Export.lua", "Calendar.lua", "Core.lua"])
     slash = g.SlashCmdList["ITEMDATAEXPORT"]
 
     # 1. Normal run: 3 months; the walk waits for the event, then proceeds.

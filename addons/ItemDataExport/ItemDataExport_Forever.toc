@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: ItemDataExport
-## Notes: Dev tool: resolves (item, bonus id) tuples to names, stats and tooltip text in SavedVariables for offline AH analysis
+## Notes: Dev tool: exports client truth to SavedVariables for offline AH analysis: item tuples, holiday calendar, profession recipes, disenchant outcomes
 ## Author: oannes23
-## Version: 0.1.0
+## Version: 0.2.0
 ## IconTexture: Interface\Icons\INV_Misc_Note_01
 ## SavedVariables: ItemDataExportDB
 ## AddonCompartmentFunc: ItemDataExport_OnCompartmentClick
@@ -10,5 +10,8 @@
 Locales\enUS.lua
 Data\Builtin.lua
 Data\Pairs.lua
+Export.lua
 Calendar.lua
+Recipes.lua
+Disenchant.lua
 Core.lua

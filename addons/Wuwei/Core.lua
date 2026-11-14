@@ -1,5 +1,6 @@
 -- Wuwei · WoW: Forever (Interface 16001, WOW_PROJECT_CAMELOT)
--- Phase 1: plan data, tooltip line, AH side panel, house detection. Phase 2: post helper, trade ledger. No AH data here is secret-valued.
+-- Phase 1: plan data, tooltip line, AH side panel, house detection. Phase 2: post helper, trade ledger.
+-- Phase 2b: steals watchlist scan (Steals.lua). No AH data here is secret-valued.
 local addonName, ns = ...
 
 local format = string.format
@@ -10,6 +11,8 @@ local DEFAULTS = {
   tooltip = true,
   post = true, -- post-helper info box
   shuttle = false, -- faction <-> Blackwater shuttle plays (SPEC D-028); off = faction side only, shuttle as info
+  steals = true, -- steals watchlist: scan button, harvest, alerts, tooltip line (SPEC D-040)
+  stealsSound = true, -- alert sound on a new steal
   house = nil, -- manual override (house id); nil = auto-detect
 }
 
@@ -41,6 +44,7 @@ local function Status()
   Say(format("plays at this house: %d | shuttle: %s%s", #Plan.Plays(house), ns.db.shuttle and "on" or "off",
     ns.db.shuttle and "" or format(" (%d shuttle items shown as info only)", Plan.ShuttleHidden(house))))
   Say(format("ledger entries: %d | post helper: %s", #ns.Ledger.Entries(), tostring(ns.db.post)))
+  Say(ns.Steals.StatusLine())
 end
 
 local function Probe()
@@ -64,7 +68,7 @@ local function OnSlash(msg)
     end
   elseif cmd == "toggle" then
     ns.db.enabled = not ns.db.enabled
-    if not ns.db.enabled then ns.Panel.Hide() ns.Post.Hide() ns.Keys.Banner.Hide() end
+    if not ns.db.enabled then ns.Panel.Hide() ns.Post.Hide() ns.Keys.Banner.Hide() ns.Steals.Stop("off") end
     Say(format("enabled: %s", tostring(ns.db.enabled)))
   elseif cmd == "shuttle" then
     local arg = rest:lower()
@@ -95,8 +99,11 @@ local function OnSlash(msg)
     end
   elseif cmd == "keys" then
     ns.Keys.Slash(rest)
+  elseif cmd == "steals" then
+    ns.Steals.Slash(rest)
   else
-    Say("usage: /wuwei [status | house <id|auto> | toggle | shuttle [on|off] | post | ledger [clear confirm] | keys [default] | probe]")
+    Say("usage: /wuwei [status | house <id|auto> | toggle | shuttle [on|off] | post | ledger [clear confirm] | keys [default] | "
+      .. "steals [on|off|scan|sound] | probe]")
   end
 end
 
@@ -107,6 +114,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
   ns.Ledger.Init()
   ns.Post.Init()
   ns.Keys.Init()
+  ns.Steals.Init()
 end)
 
 SLASH_WUWEI1 = "/wuwei"

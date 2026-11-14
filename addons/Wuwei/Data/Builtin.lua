@@ -17,4 +17,15 @@ ns.BUILTIN_PLAN = {
     [8153] = { ref = { [114] = 2500, [117] = 5200 }, signal = "SELL", sellMin = 5000, qtyCap = 10, gain = 27 },
     [2589] = { ref = { [114] = 40, [117] = 55 }, signal = "BUY", buyMax = 35, qtyCap = 400, gain = 4 },
   },
+  -- Steals watchlist sample (SPEC D-033, data contract). Illustrative numbers; classID/subclassID are Enum.ItemClass
+  -- and its subclass (9 Recipe, 15 Miscellaneous: 2 companion pet, 5 mount; 2 Weapon: 1 two-handed axe).
+  steals = {
+    generated = "2026-11-09T07:00:00Z", house = 114,
+    items = {
+      [13518] = { fair = 450000, buyMax = 225000, n = 6, kind = "recipe", classID = 9, subclassID = 2 },
+      [8485] = { fair = 120000, buyMax = 60000, n = 9, kind = "pet", classID = 15, subclassID = 2 },
+      [13335] = { fair = 9000000, buyMax = 5000000, n = 3, kind = "mount", classID = 15, subclassID = 5 },
+      [12784] = { fair = 2000000, buyMax = 1100000, n = 4, kind = "epic", classID = 2, subclassID = 1 },
+    },
+  },
 }

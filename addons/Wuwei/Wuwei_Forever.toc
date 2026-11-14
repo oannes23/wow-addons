@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Wuwei
-## Notes: Surfaces the right AH action at the right moment from your market pipeline (buy, sell, shuttle, hold)
+## Notes: Surfaces the right AH action at the right moment from your market pipeline (buy, sell, shuttle, hold, steals)
 ## Author: oannes23
-## Version: 0.1.0
+## Version: 0.2.0
 ## IconTexture: Interface\Icons\INV_Misc_QuestionMark
 ## SavedVariables: WuweiDB
 ## AddonCompartmentFunc: Wuwei_OnCompartmentClick
@@ -16,5 +16,6 @@ Ledger.lua
 Post.lua
 Tooltip.lua
 Panel.lua
+Steals.lua
 Keys.lua
 Core.lua

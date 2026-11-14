@@ -1,6 +1,7 @@
 -- One quiet tooltip line for items in the plan: "Wuwei: SHUTTLE → BW ≥ 65s · ref 3s 60c · 42m".
 -- Shuttle toggle off (default): "Wuwei: SELL ≥ 2s · ref 2s 10c · BW ≥ 65s (2.4×) shuttle off · 42m", or for an item
 -- whose only play is the shuttle, "Wuwei: SHUTTLE (off) → BW ≥ 65s (2.4×) · ref 3s 60c · 42m" (information only).
+-- Items only in the steals watchlist: "Wuwei: STEAL ≤ 22g 50s · fair 45g (n 6) · 42m" (the plan line wins, D-039).
 local _, ns = ...
 
 local Tooltip = {}
@@ -10,7 +11,7 @@ ns.Tooltip = Tooltip
 function Tooltip.Line(id)
   local Plan = ns.Plan
   local it = id and Plan.Item(id)
-  if not it then return nil end
+  if not it then return id and ns.Steals and ns.Steals.TooltipLine(id) or nil end
   local house = ns.House.Detect()
   local rule = Plan.Rule(it, house)
   local parts = { Plan.Colorize(it.signal, Plan.Label(it.signal) .. (rule ~= "" and (" " .. rule) or "")) }

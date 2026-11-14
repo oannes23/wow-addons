@@ -1,8 +1,10 @@
 -- ItemDataExport · WoW: Forever (Interface 16001, WOW_PROJECT_CAMELOT)
 -- Dev tool: resolves (item[, bonus[, modType, modValue]]) tuples to item info, stats and tooltip text in
 -- SavedVariables for the AH collector's importer (SPEC.md). No secret values; no Blizzard frames touched.
+-- Also owns the SavedVariables table and the /ide slash entry; other exports register via Export.lua (D-007).
 local addonName, ns = ...
 local L = ns.L
+local Say, Plain = ns.Say, ns.Plain
 
 local C_Item, C_TooltipInfo, C_Timer = C_Item, C_TooltipInfo, C_Timer
 local GetItemInfo, GetItemStats = C_Item.GetItemInfo, C_Item.GetItemStats
@@ -27,6 +29,7 @@ local function InitDB()
   db.results = db.results or {}
   db.failed = db.failed or {}
   ns.db = db
+  ns.DBReady()
 end
 
 local function Input()
@@ -48,17 +51,6 @@ local function BuildLink(t)
   if bonus then f[#f + 1] = 1; f[#f + 1] = bonus else f[#f + 1] = 0 end
   if modType then f[#f + 1] = 1; f[#f + 1] = modType; f[#f + 1] = modValue end
   return concat(f, ":")
-end
-
-local function Plain(tbl, stringsOnly)
-  -- Copy scalars only (tooltip lines hold color mixins / nested tables we don't need). Tooltip lines keep strings
-  -- only: ~26.6k tuples x ~10 lines would otherwise bloat SavedVariables with per-line numeric fields.
-  local out = {}
-  for k, v in pairs(tbl) do
-    local tv = type(v)
-    if tv == "string" or (not stringsOnly and (tv == "number" or tv == "boolean")) then out[k] = v end
-  end
-  return out
 end
 
 local function CaptureBase(id)
@@ -105,10 +97,6 @@ local function Counts()
   local inflight = 0
   for _ in pairs(run.inflight or {}) do inflight = inflight + 1 end
   return #input.tuples, done, failed, inflight
-end
-
-local function Say(msg)
-  print("|cff33ff99" .. addonName .. "|r " .. msg)
 end
 
 local function Progress()
@@ -242,6 +230,7 @@ local function Status()
   Say(L["input %s (%s): %d tuples; %d resolved, %d failed, %d in flight%s"]:format(
     tostring(input.generated), tostring(input.source), total, done, failed, inflight,
     run.active and L[", running"] or ""))
+  ns.RunStatus()
 end
 
 EventUtil.ContinueOnAddOnLoaded(addonName, function()
@@ -255,17 +244,17 @@ f:SetScript("OnEvent", function(_, _, itemID, success) OnItemLoaded(itemID, succ
 
 SLASH_ITEMDATAEXPORT1 = "/ide"
 SlashCmdList.ITEMDATAEXPORT = function(msg)
-  local cmd, arg = (msg or ""):lower():match("^%s*(%S*)%s*(%S*)")
+  local cmd, arg, rest = (msg or ""):lower():match("^%s*(%S*)%s*(%S*)%s*(.-)%s*$")
   if cmd == "start" then Start()
   elseif cmd == "stop" then Stop()
-  elseif cmd == "calendar" then ns.DumpCalendar(arg)
+  elseif ns.RunCommand(cmd, arg, rest) then return
   elseif cmd == "reset" then
     if arg ~= "confirm" then Say(L["/ide reset confirm clears all results"]); return end
     Stop()
     local db = ns.db
     db.items, db.results, db.failed, db.meta = {}, {}, {}, {}
     Say(L["results cleared"])
-  else Status(); Say("/ide start | stop | status | calendar [months] | reset confirm") end
+  else Status(); Say("/ide start | stop | status | reset confirm | " .. concat(ns.CommandHelp(), " | ")) end
 end
 
 function ItemDataExport_OnCompartmentClick()

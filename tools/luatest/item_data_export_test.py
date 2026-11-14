@@ -21,6 +21,8 @@ C_Timer = { NewTicker = function(_, fn) ticker = { fn = fn, Cancel = function(se
 local frames = {}
 function CreateFrame() local f = { ev = {} } function f:RegisterEvent(e) self.ev[e] = true end
   function f:UnregisterEvent(e) self.ev[e] = nil end
+  function f:UnregisterAllEvents() self.ev = {} end
+  function f:RegisterUnitEvent(e) self.ev[e] = true end
   function f:SetScript(_, fn) self.fn = fn end frames[#frames+1] = f return f end
 function fire(e, ...) for _, f in ipairs(frames) do if f.ev[e] then f.fn(f, e, ...) end end end
 SlashCmdList = {}
@@ -68,7 +70,7 @@ def main() -> None:
     rt.execute(MOCK)
     g = rt.globals()
     ns = rt.table()
-    load(rt, ns, ["Locales/enUS.lua", "Data/Builtin.lua"])
+    load(rt, ns, ["Locales/enUS.lua", "Data/Builtin.lua", "Export.lua"])
     # Replace the builtin set with one covering every path.
     ns.INPUT = rt.eval("""{ generated = "test", source = "harness", tuples = {
       {869}, {2589}, {3195}, {3195, 12918}, {3195, 12719}, {3195, 12918, 28, 5254}, {404}, {999} } }""")

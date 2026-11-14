@@ -40,3 +40,13 @@ Append-only. Each entry: **symptom → cause → rule**. Read this before starti
 - Symptom: `wowapi.py exists GetCVar` said `in_GlobalAPI: false`, and a review nearly rewrote working code to `C_CVar.GetCVar`. Blizzard's own AH sell frame calls `GetCVar`.
 - Cause: Ketho's `GlobalAPI.lua` lists C-side globals only. `GetCVar` is a Lua function defined in `Blizzard_SharedXMLBase/CvarUtil.lua` [SRC]. Same class as P-004, opposite direction.
 - Rule: read all three fields of `exists` (`in_GlobalAPI`, `documented_as`, `lua_defined_in`). For a Lua-defined global, also check that its file's addon loads on Forever (TOC `AllowLoadGameType`) and that Blizzard code under `Shared/` or `Camelot/` calls it.
+
+## P-009 · `wowapi.py fn` misses undocumented C functions (2026-11-14)
+- Symptom: `wowapi.py search GetAllRecipeIDs` found nothing, so `C_TradeSkillUI.GetAllRecipeIDs` looked absent on Forever, and the recipe-enumeration design nearly assumed a classic `GetTradeSkillInfo` list.
+- Cause: the generated docs (`Blizzard_APIDocumentationGenerated`) omit many C functions that Blizzard's own UI calls: `C_TradeSkillUI.GetAllRecipeIDs/GetFilteredRecipeIDs/GetCategories/GetCategoryInfo/GetSubCategories/GetRecipeCooldown`, `GetLootSlotInfo/GetLootSlotLink/GetLootSlotType/GetNumLootItems/GetLootSourceInfo`, `GetProfessions/GetProfessionInfo`. They exist (`exists` shows `in_GlobalAPI` true) but their **secrecy flags, argument and return types are unknown** [SRC, 1.60.1.70862]. Forever uses the modern Professions UI (`Blizzard_Professions`, `Camelot/` overrides only re-implement tabs and art), so the Mainline `C_TradeSkillUI` is the enumeration API.
+- Rule: when `fn`/`search` finds nothing, run `exists <name>` and grep the Blizzard UI source for call sites (`grep -rnE "Name" reference/upstream/wow-ui-source/Interface/AddOns`) to recover signatures from usage. Treat such APIs as flag-unknown: pcall, type-check, `issecretvalue`, and list them as [TODO-INGAME] in the spec.
+
+## P-010 · lupa table fields named like Python dict methods (2026-11-14)
+- Symptom: a harness assertion on a mocked Lua record failed, then raised `'cython_function_or_method' object has no attribute 'values'`. `rec.items` and `rec.keys` returned lupa's `_LuaTable.items`/`.keys` methods, not the Lua fields.
+- Cause: lupa exposes `keys()`, `values()`, `items()` as Python attributes on every Lua table; attribute access prefers them over same-named Lua fields.
+- Rule: in `tools/luatest` mocks never name Lua fields `keys`, `values` or `items` if Python reads them with dot syntax; read them as `t["keys"]` or rename (`sentKeys`, `nitems`).

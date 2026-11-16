@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+- **Fix: each auction mail was recorded twice** (SPEC D-049). Taking the gold or the items from a mail, or the game loading the item a moment late, changed what Wuwei read from it, so the same mail was saved again. Seen on the first real mailbox visit: 8 entries for 4 mails, so the harness sale counted twice. A mail is now recognised by its subject, and later reads only fill in details that were missing.
+- **Fix: wrong quantity on returned stacks.** The quantity came from the first attached stack, so 10 crates returned in two stacks of 5 read as 5. It now comes from the subject (`Auction expired: Waylaid Crate: Apprentice Ore (10)`), so every mail entry has an exact quantity.
+- Money received is still exact when the gold is already taken (sale price + deposit refund - AH cut).
+- Ledgers written by 0.4.0 are repaired once on login: duplicates merged, quantities corrected, entries marked `repaired`.
+
 ## 0.4.0
 - **Fix: ledger misread a partly sold commodity auction** (SPEC D-047). Seen on 77 Deviate Scales with 21 bought: the ledger recorded a cancel you never made, booked the 21 at the whole sale's total (1g 21s each instead of 5s 78c) and recorded the remaining 56 as a second post. Now:
   - a partial sale is one `sold` entry at your listing price;

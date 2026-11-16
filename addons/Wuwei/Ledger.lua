@@ -106,6 +106,8 @@ end
 
 function Ledger.PnL() return Replay() end
 
+function Ledger.Invalidate() cache = nil end -- after editing entries in place (Mail D-049)
+
 function Ledger.Clear()
   if ns.db then ns.db.ledger = {} end
   cache = nil

@@ -76,9 +76,9 @@ def test_subject_fallback_returns_and_skips():
     inbox(rt, g,
           # invoice data unavailable: the subject still gives an exact net, item by name only
           """{ sender = "Horde Auction House", subject = "Auction successful: Linen Cloth", money = 950, daysLeft = 29.5 }""",
-          """{ sender = "Horde Auction House", subject = "Auction expired: Iron Ore", daysLeft = 29.9, itemCount = 1,
+          """{ sender = "Horde Auction House", subject = "Auction expired: Iron Ore (40)", daysLeft = 29.9, itemCount = 1,
                firstQty = 40, firstLink = "|cffffffff|Hitem:2772::::::::60:::::|h[Iron Ore]|h|r" }""",
-          """{ sender = "Blackwater Auction House", subject = "Auction canceled: Wildvine", daysLeft = 29.9, itemCount = 1,
+          """{ sender = "Blackwater Auction House", subject = "Auction canceled: Wildvine (3)", daysLeft = 29.9, itemCount = 1,
                firstQty = 3, firstLink = "|Hitem:8153::::|h[Wildvine]|h" }""",
           """{ sender = "Horde Auction House", subject = "Sale Pending: Linen Cloth", daysLeft = 29.9,
                invoice = { type = "seller_temp_invoice", item = "Linen Cloth", bid = 1000 } }""",
@@ -86,10 +86,10 @@ def test_subject_fallback_returns_and_skips():
                invoice = { type = "buyer", item = "Thick Leather", bid = 500 } }""",
           """{ sender = "Thrall", subject = "hi", money = 100, daysLeft = 3 }""")
     g.fire("MAIL_SHOW")
-    got = [(e.outcome, e.itemID, e.itemName, e.qty, e.net, e.house, e.qtyUnknown) for e in invoices(g)]
-    assert got == [("sold", None, "Linen Cloth", 1, 950, 114, True),       # no Linen Cloth seen before: name only
-                   ("expired", 2772, "Iron Ore", 40, None, 114, None),       # item from the attached link
-                   ("canceled", 8153, "Wildvine", 3, None, 117, None)], got
+    got = [(e.outcome, e.itemID, e.itemName, e.qty, e.net, e.house) for e in invoices(g)]
+    assert got == [("sold", None, "Linen Cloth", 1, 950, 114),             # no Linen Cloth seen before: name only
+                   ("expired", 2772, "Iron Ore", 40, None, 114),             # qty from the subject, item from the link
+                   ("canceled", 8153, "Wildvine", 3, None, 117)], got
     # The client's own name lookup is the last resort
     g.C_Item.GetItemInfoInstant = rt.eval("function(n) if n == 'Linen Cloth' then return 2589 end end")
     assert ns.Mail.ResolveName("Linen Cloth") == 2589 and ns.Mail.ResolveName("Nope") is None
@@ -110,6 +110,76 @@ def test_unresolved_name_and_missing_api():
     assert (e.outcome, e.net, e.gross) == ("sold", 32400, None)
     g.GetInboxHeaderInfo = rt.eval("function() error('boom') end")  # a failing getter never breaks the scan
     g.fire("MAIL_INBOX_UPDATE")
+
+
+CRATES = """{ sender = "Blackwater Auction House", subject = "Auction expired: Waylaid Crate: Apprentice Ore (10)",
+  daysLeft = 29.9, itemCount = 2, firstQty = %s, firstLink = %s }"""
+LINK = '"|Hitem:248683::::|h[Waylaid Crate: Apprentice Ore]|h"'
+HARNESS = """{ sender = "Horde Auction House", subject = "Auction successful: Pattern: Raptor Hide Harness", money = %d,
+  daysLeft = 29.95, invoice = { type = "seller", item = "Pattern: Raptor Hide Harness", bid = 89900, deposit = 375,
+  cut = 4495, count = 1 } }"""
+
+
+def test_same_mail_changing_in_the_inbox_d049():
+    """In-game 2026-11-16: taking the gold, taking the items or a late item link recorded the same mail twice."""
+    rt, ns, g = boot()
+    g.NAMES[248683] = "Waylaid Crate: Apprentice Ore"
+    g.NAMES[13287] = "Pattern: Raptor Hide Harness"
+    ns.Ledger.Add("buy", 13287, 1, 3500, "test")
+    inbox(rt, g, HARNESS % 85780, CRATES % ("nil", "nil"))             # crate link not loaded yet
+    g.fire("MAIL_SHOW")
+    inbox(rt, g, HARNESS % 0, CRATES % ("5", LINK)); g.fire("MAIL_INBOX_UPDATE")   # gold taken; link loaded
+    g.server += 200
+    inbox(rt, g, CRATES % ("nil", "nil")); g.fire("MAIL_INBOX_UPDATE")              # first stack taken
+    got = [(e.outcome, e.itemID, e.itemName, e.qty, e.unit, e.gross, e.cut, e.net, e.house) for e in invoices(g)]
+    assert got == [("sold", 13287, "Pattern: Raptor Hide Harness", 1, 89900, 89900, 4495, 85780, 114),
+                   ("expired", 248683, "Waylaid Crate: Apprentice Ore", 10, None, None, None, None, 117)], got
+    # net comes from the invoice even when the gold is already gone at the first read
+    rt2, ns2, g2 = boot()
+    inbox(rt2, g2, HARNESS % 0); g2.fire("MAIL_SHOW")
+    assert invoices(g2)[0].net == 85780
+    # Two really separate identical returns in one inbox stay two entries (multiset)
+    inbox(rt, g, CRATES % ("5", LINK), CRATES % ("5", LINK)); g.fire("MAIL_INBOX_UPDATE")
+    assert len(invoices(g)) == 3
+
+
+def test_repair_d049():
+    """The one-time repair collapses the duplicates 0.4.0 wrote (the owner's real 2026-11-16 mail, abridged)."""
+    old = """{
+      { kind = "buy", ts = 1, itemID = 248683, qty = 10, unit = 261, house = 114, src = "x" },
+      { kind = "invoice", ts = 9, itemName = "Waylaid Crate: Apprentice Ore (10)", qtyUnknown = true, qty = 1, house = 117,
+        src = "MAIL", outcome = "expired", at = 1794857992, sender = "Blackwater Auction House" },
+      { kind = "invoice", ts = 9, itemName = "Cooked Glossy Mightfish (20)", itemID = 13927, qty = 20, house = 117,
+        src = "MAIL", outcome = "expired", at = 1794864153, sender = "Blackwater Auction House" },
+      { kind = "invoice", ts = 9, itemName = "Pattern: Raptor Hide Harness", itemID = 13287, qty = 1, unit = 89900,
+        gross = 89900, deposit = 375, cut = 4495, net = 85780, house = 114, src = "MAIL", outcome = "sold",
+        at = 1794848853, sender = "Horde Auction House" },
+      { kind = "invoice", ts = 9, itemName = "Pattern: Raptor Hide Harness", itemID = 13287, qty = 1, unit = 89900,
+        gross = 89900, deposit = 375, cut = 4495, house = 114, src = "MAIL", outcome = "sold", at = 1794848858,
+        sender = "Horde Auction House" },
+      { kind = "invoice", ts = 9, itemName = "Waylaid Crate: Apprentice Ore (10)", itemID = 248683, qty = 5, house = 117,
+        src = "MAIL", outcome = "expired", at = 1794858003, sender = "Blackwater Auction House" },
+      { kind = "invoice", ts = 9, itemName = "Cooked Glossy Mightfish (20)", qtyUnknown = true, qty = 1, house = 117,
+        src = "MAIL", outcome = "expired", at = 1794864171, sender = "Blackwater Auction House" },
+    }"""
+    rt, ns, g = boot()
+    g.NAMES[248683] = "Waylaid Crate: Apprentice Ore"
+    g.WuweiDB.ledger = rt.eval(old)
+    g.WuweiDB.mailRepair = None
+    assert ns.Mail.Repair() == 7                       # 4 renamed / resized, 3 dropped
+    got = [(e.outcome, e.itemID, e.itemName, e.qty, e.net, e.qtyUnknown) for e in invoices(g)]
+    assert got == [("expired", 248683, "Waylaid Crate: Apprentice Ore", 10, None, None),
+                   ("expired", 13927, "Cooked Glossy Mightfish", 20, None, None),
+                   ("sold", 13287, "Pattern: Raptor Hide Harness", 1, 85780, None)], got
+    assert len(g.WuweiDB.ledgerState.mail) == 3 and ns.Ledger.PnL().mail.sold == 1
+    assert ns.Mail.Repair() == 0 and g.WuweiDB.mailRepair == 1             # once only
+    # The same mails still in the inbox after the upgrade match the rekeyed records: nothing new
+    g.server = 1794868400
+    g.NAMES[13927] = "Cooked Glossy Mightfish"
+    inbox(rt, g, """{ sender = "Blackwater Auction House", subject = "Auction expired: Cooked Glossy Mightfish (20)",
+                      daysLeft = %r }""" % (30 - (1794868400 - 1794864160) / 86400))
+    g.fire("MAIL_SHOW")
+    assert len(invoices(g)) == 3
 
 
 if __name__ == "__main__":

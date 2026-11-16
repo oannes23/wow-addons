@@ -118,3 +118,12 @@ None of them consumes an external analysis pipeline's signals or handles faction
 - After the D-041 fix (Wuwei 0.2.1) the user confirmed scans behave correctly in game [USER 2026-11-15].
 - Still open: which key form (ilvl 0 or the item's level) matches gear listings.
 
+
+## Owned auctions, cancels and the public file [INGAME 2026-11-15/16, one commodity sale; Wuwei SPEC D-047]
+- A partly sold commodity auction appears in `C_AuctionHouse.GetOwnedAuctions()` as **two rows under one auctionID**: the live remainder (`buyoutAmount` = unit price) and a `status == Sold` row for the bought units whose `buyoutAmount` is the **total** (21 x 578 = 12,138). [INGAME, reconstructed from Wuwei's ledger; confirm with a `/dump` (Wuwei checklist 41)]
+- `AUCTION_CANCELED(auctionID)` fired at that partial sale, with no cancel by the player. [INGAME, one observation] Treat the event as "re-check", never as proof of a cancel.
+- The first owned list after opening the AH can arrive without your auctions. [INFER: a record vanished and came back 51 s later as a "new" post]
+- The public auction files carry no owner: keys are `id`, `item`, `buyout`/`unit_price`, `quantity`, `time_left`, `bid`. [SRC raw house-114 file, 2026-11-16] The auction ID matches the owned ID, so Wuwei's IDs can be traced hourly (collector ADR 0004).
+- Commodity purchases are cheapest-first: `StartCommoditiesPurchase(itemID, quantity)` takes no auction. [SRC] So a commodity listing that disappears while a cheaper one stays untouched was not bought. 37–46% of commodity disappearances on 2026-11-15 were like that.
+- Open: the owner's 56-unit remainder left the public file between two snapshots without a sale or cancel (owner's report). Is it still listed in game? (collector ADR 0004 G-1)
+- Mail: `GetInboxInvoiceInfo(i)` returns `invoiceType, itemName, playerName, bid, buyout, deposit, consignment, moneyDelay, etaHour, etaMin, count, commerceAuction` (`MailFrame.lua:790`) [SRC]. Subjects in enUS: `Auction successful: %s`, `Auction expired: %s`, `Auction canceled: %s`, `Sale Pending: %s`. A sale mail's money = bid + deposit − consignment (2026-11-15 invoice: 380s + 1s − 57s = 3g 24s) [INGAME].

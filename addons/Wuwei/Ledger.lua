@@ -23,10 +23,11 @@ function Ledger.Entries()
   return ns.db and ns.db.ledger or {}
 end
 
--- Append one entry. `extra` may carry total, auctionID, inferred.
+-- Append one entry. `extra` may carry total, auctionID, inferred, and the invoice fields (D-048; an invoice may
+-- carry itemName instead of itemID, and its own house).
 function Ledger.Add(kind, itemID, qty, unit, src, extra)
   local db = ns.db
-  if not (db and db.ledger and itemID) then return nil end
+  if not (db and db.ledger and (itemID or (extra and extra.itemName))) then return nil end
   local e = {
     ts = GetServerTime(), kind = kind, itemID = itemID, qty = qty or 1,
     unit = unit and Round(unit) or nil, house = (ns.House.Detect()), src = src,
@@ -44,31 +45,49 @@ end
 -- every buy adds qty and total cost to the item's pool; every sold entry removes qty at the pool's current
 -- average unit cost. Posts, cancels and expiries never change the pool (the goods are still ours).
 ----------------------------------------------------------------------------------------------------
+-- Exact mail record (D-048). Kept out of the pools: it duplicates the owned-diff sold/expired/cancel rows.
+local function AddMail(m, e)
+  if e.outcome == "sold" then
+    m.sold, m.soldQty = m.sold + 1, m.soldQty + (e.qty or 0)
+    m.gross, m.cut, m.net = m.gross + (e.gross or 0), m.cut + (e.cut or 0), m.net + (e.net or 0)
+  elseif e.outcome == "expired" or e.outcome == "canceled" then
+    m[e.outcome] = m[e.outcome] + 1
+  end
+end
+
+local function AddPool(r, p, e)
+  local qty, unit = e.qty or 0, e.unit or 0
+  if e.kind == "buy" then
+    local total = e.total or qty * unit
+    p.qty, p.cost = p.qty + qty, p.cost + total
+    r.spent = r.spent + total
+  elseif e.kind == "sold" then
+    local gross = qty * unit
+    local net = gross - Round(gross * (ns.Post and ns.Post.Cut(e.house) or 0.05))
+    local take = min(qty, p.qty)
+    local avg = p.qty > 0 and p.cost / p.qty or 0
+    local cogs = avg * take
+    p.qty, p.cost = p.qty - take, p.cost - cogs
+    if p.qty <= 0 then p.qty, p.cost = 0, 0 end
+    r.grossRevenue, r.netRevenue, r.cogs = r.grossRevenue + gross, r.netRevenue + net, r.cogs + cogs
+    r.unbasedSoldQty = r.unbasedSoldQty + (qty - take)
+  end
+end
+
 local function Replay()
   if cache then return cache end
   local pools = {}
   local r = { spent = 0, grossRevenue = 0, netRevenue = 0, cogs = 0, realized = 0, unbasedSoldQty = 0,
-    counts = { buy = 0, post = 0, sold = 0, cancel = 0, expired = 0 }, items = pools }
+    counts = { buy = 0, post = 0, sold = 0, cancel = 0, expired = 0, invoice = 0 }, items = pools,
+    mail = { sold = 0, soldQty = 0, gross = 0, cut = 0, net = 0, expired = 0, canceled = 0 } }
   for _, e in ipairs(Ledger.Entries()) do
-    local c = r.counts
-    c[e.kind] = (c[e.kind] or 0) + 1
-    local p = pools[e.itemID]
-    if not p then p = { qty = 0, cost = 0 } pools[e.itemID] = p end
-    local qty, unit = e.qty or 0, e.unit or 0
-    if e.kind == "buy" then
-      local total = e.total or qty * unit
-      p.qty, p.cost = p.qty + qty, p.cost + total
-      r.spent = r.spent + total
-    elseif e.kind == "sold" then
-      local gross = qty * unit
-      local net = gross - Round(gross * (ns.Post and ns.Post.Cut(e.house) or 0.05))
-      local take = min(qty, p.qty)
-      local avg = p.qty > 0 and p.cost / p.qty or 0
-      local cogs = avg * take
-      p.qty, p.cost = p.qty - take, p.cost - cogs
-      if p.qty <= 0 then p.qty, p.cost = 0, 0 end
-      r.grossRevenue, r.netRevenue, r.cogs = r.grossRevenue + gross, r.netRevenue + net, r.cogs + cogs
-      r.unbasedSoldQty = r.unbasedSoldQty + (qty - take)
+    r.counts[e.kind] = (r.counts[e.kind] or 0) + 1
+    if e.kind == "invoice" then
+      AddMail(r.mail, e)
+    elseif e.itemID then
+      local p = pools[e.itemID]
+      if not p then p = { qty = 0, cost = 0 } pools[e.itemID] = p end
+      AddPool(r, p, e)
     end
   end
   r.realized = r.netRevenue - r.cogs
@@ -97,13 +116,16 @@ function Ledger.Summary()
   local r = Replay()
   local c = r.counts
   return {
-    string.format("entries: %d (cap %d) | buy %d, post %d, sold %d, cancel %d, expired %d",
-      #Ledger.Entries(), Ledger.MAX_ENTRIES, c.buy, c.post, c.sold, c.cancel, c.expired),
+    string.format("entries: %d (cap %d) | buy %d, post %d, sold %d, cancel %d, expired %d, invoice %d",
+      #Ledger.Entries(), Ledger.MAX_ENTRIES, c.buy, c.post, c.sold, c.cancel, c.expired, c.invoice),
     string.format("spent: %s | sales gross %s, net of cut %s", Money(r.spent), Money(r.grossRevenue), Money(r.netRevenue)),
     string.format("cost of goods sold: %s | realized P&L: %s%s", Money(r.cogs), r.realized < 0 and "-" or "",
       Money(math.abs(r.realized))),
     string.format("held (bought, unsold): %d units, cost %s | sold without a buy on record: %d units",
       r.heldQty, Money(r.heldCost), r.unbasedSoldQty),
+    string.format("mail (exact): %d sales, %d units, gross %s, cut %s, net %s | %d expired, %d canceled",
+      r.mail.sold, r.mail.soldQty, Money(r.mail.gross), Money(r.mail.cut), Money(r.mail.net), r.mail.expired,
+      r.mail.canceled),
   }
 end
 
@@ -119,6 +141,49 @@ local function State()
 end
 
 local SOLD = (Enum and Enum.AuctionStatus and Enum.AuctionStatus.Sold) or 1
+local sessionUpdates = 0 -- OWNED_AUCTIONS_UPDATED count since the last AUCTION_HOUSE_SHOW
+
+-- The unsold remainder of an auction that has left the owned list: confirmed cancel, expiry or (inferred) sale.
+local function Resolve(id, rec, now)
+  local q = rec.qty or 0
+  rec.qty, rec.done = 0, true
+  if q <= 0 or not rec.itemID then return end
+  if rec.cancelPending then
+    Ledger.Add("cancel", rec.itemID, q, rec.unit, "AUCTION_CANCELED", { auctionID = id })
+  elseif rec.expiredEvent then
+    Ledger.Add("expired", rec.itemID, q, rec.unit, "AUCTION_HOUSE_AUCTIONS_EXPIRED", { auctionID = id })
+  else
+    -- Gone before its expiry time (or expiry unknown) = sold; gone after it = expired. Inherently a guess:
+    -- a sale picked up after the expiry time looks like an expiry. SPEC D-017.
+    local expired = rec.expires and now >= rec.expires - Ledger.EXPIRY_SLACK
+    Ledger.Add(expired and "expired" or "sold", rec.itemID, q, rec.unit, "OWNED_AUCTIONS_UPDATED",
+      { auctionID = id, inferred = true })
+  end
+end
+
+-- Group the owned list by auctionID: one live row plus any Sold rows. A partly sold commodity auction lists its sold
+-- part as a separate Sold row under the same id, priced as a total (SPEC D-047).
+local function Group(list)
+  local groups, order = {}, {}
+  for _, info in ipairs(list) do
+    local id = info.auctionID
+    if id then
+      local g = groups[id]
+      if not g then
+        g = { soldQty = 0, soldGross = 0 }
+        groups[id], order[#order + 1] = g, id
+      end
+      g.itemID = g.itemID or (info.itemKey and info.itemKey.itemID)
+      if info.status == SOLD then
+        g.soldQty = g.soldQty + (info.quantity or 1)
+        g.soldGross = g.soldGross + (info.buyoutAmount or info.bidAmount or 0)
+      else
+        g.live = info
+      end
+    end
+  end
+  return groups, order
+end
 
 function Ledger.OnOwnedUpdated()
   if not (ns.db and C_AuctionHouse and C_AuctionHouse.GetOwnedAuctions) then return end
@@ -126,56 +191,102 @@ function Ledger.OnOwnedUpdated()
   -- house look vanished: touch nothing. SPEC D-030.
   local house, _, confident = ns.House.Detect()
   if not confident then return end
+  sessionUpdates = sessionUpdates + 1
   local st = State()
   local owned = st.owned
   local now = GetServerTime()
-  local seen = {}
-  for _, info in ipairs(C_AuctionHouse.GetOwnedAuctions() or {}) do
-    local id = info.auctionID
-    seen[id] = true
+  local list = C_AuctionHouse.GetOwnedAuctions() or {}
+  local groups, order = Group(list)
+  for _, id in ipairs(order) do
+    local g = groups[id]
+    local live = g.live
     local rec = owned[id]
-    local unit = info.buyoutAmount or info.bidAmount -- [TODO-INGAME] per-unit for commodities? (Retail: yes)
+    if rec and rec.sold then rec.done, rec.sold = true, nil end -- record from before D-047
     if not rec then
-      rec = { itemID = info.itemKey and info.itemKey.itemID, qty = info.quantity or 1, unit = unit, house = house }
+      local qty = (live and live.quantity or 0) + g.soldQty
+      local unit = live and (live.buyoutAmount or live.bidAmount)
+      if not unit and g.soldQty > 0 then unit = g.soldGross / g.soldQty end
+      rec = { itemID = g.itemID, qty = qty, unit = unit and Round(unit), house = house }
       owned[id] = rec
       if st.baselined and rec.itemID then
-        Ledger.Add("post", rec.itemID, rec.qty, rec.unit, "OWNED_AUCTIONS_UPDATED", { auctionID = id, inferred = true })
+        Ledger.Add("post", rec.itemID, qty, rec.unit, "OWNED_AUCTIONS_UPDATED", { auctionID = id, inferred = true })
       end
     end
-    -- Partial commodity fill: the quantity shrank while the auction is still up. Record the difference as sold and
-    -- carry on with the remainder (so a later vanish/expiry covers only what is left). Growth just updates. D-029.
-    local q = info.quantity
-    if q and q ~= rec.qty and info.status ~= SOLD and not rec.sold then
-      if q < rec.qty and rec.itemID then
-        Ledger.Add("sold", rec.itemID, rec.qty - q, rec.unit, "OWNED_AUCTIONS_UPDATED",
-          { auctionID = id, inferred = true, partial = true })
+    local base = rec.soldRowBase or 0
+    if live then
+      rec.cancelPending = nil -- still listed: whatever AUCTION_CANCELED said, this auction was not cancelled
+      rec.done = nil          -- a live remainder (e.g. a pre-D-047 record flagged sold by its Sold row)
+      local q = live.quantity or rec.qty
+      local shrink = (rec.qty or 0) - q
+      if shrink > 0 and rec.itemID then
+        local stated = g.soldQty - base >= shrink
+        Ledger.Add("sold", rec.itemID, shrink, rec.unit, "OWNED_AUCTIONS_UPDATED",
+          { auctionID = id, partial = true, inferred = (not stated) or nil })
       end
       rec.qty = q
-    end
-    rec.expires = info.timeLeftSeconds and (now + info.timeLeftSeconds) or rec.expires
-    if info.status == SOLD and not rec.sold and rec.itemID then
-      rec.sold = true
-      Ledger.Add("sold", rec.itemID, rec.qty, rec.unit, "OWNED_AUCTIONS_UPDATED", { auctionID = id })
+      rec.soldRowBase = g.soldQty
+      rec.expires = live.timeLeftSeconds and (now + live.timeLeftSeconds) or rec.expires
+    elseif g.soldQty > base and not rec.done then
+      local n = min(g.soldQty - base, rec.qty or 0)
+      if n > 0 and rec.itemID then
+        Ledger.Add("sold", rec.itemID, n, rec.unit, "OWNED_AUCTIONS_UPDATED", { auctionID = id })
+      end
+      rec.qty = (rec.qty or 0) - n
+      rec.soldRowBase = g.soldQty
+      if rec.qty <= 0 then rec.done = true end
     end
   end
-  -- Vanished auctions (only those of the house we are looking at: the owned list is per house).
+  -- Vanished auctions (only those of the house we are looking at: the owned list is per house). The first list of
+  -- a visit can arrive empty before the server answers: never resolve anything from it. SPEC D-047.
+  if #list == 0 and sessionUpdates == 1 then return end
   local gone = {}
   for id, rec in pairs(owned) do
-    if not seen[id] and (house == nil or rec.house == nil or rec.house == house) then gone[#gone + 1] = id end
+    if not groups[id] and (house == nil or rec.house == nil or rec.house == house) then gone[#gone + 1] = id end
   end
   sort(gone)
   for _, id in ipairs(gone) do
     local rec = owned[id]
     owned[id] = nil
-    if not rec.sold and rec.itemID then
-      -- Gone before its expiry time (or expiry unknown) = sold; gone after it = expired. Inherently a guess:
-      -- a sale picked up after the expiry time looks like an expiry. SPEC D-017.
-      local expired = rec.expires and now >= rec.expires - Ledger.EXPIRY_SLACK
-      Ledger.Add(expired and "expired" or "sold", rec.itemID, rec.qty, rec.unit, "OWNED_AUCTIONS_UPDATED",
-        { auctionID = id, inferred = true })
-    end
+    if not (rec.done or rec.sold) then Resolve(id, rec, now) end
   end
   st.baselined = true
+end
+
+----------------------------------------------------------------------------------------------------
+-- One-time repair of ledgers written before D-047 (spurious cancel, re-recorded posts, Sold-row totals as units).
+----------------------------------------------------------------------------------------------------
+function Ledger.Repair()
+  local db = ns.db
+  if not db or (db.ledgerRepair or 0) >= 1 then return 0 end
+  local l = db.ledger or {}
+  local lastIndex, firstPost = {}, {}
+  for i, e in ipairs(l) do
+    if e.auctionID then
+      lastIndex[e.auctionID] = i
+      if e.kind == "post" and not firstPost[e.auctionID] then firstPost[e.auctionID] = e end
+    end
+  end
+  local keep, changed = {}, 0
+  for i, e in ipairs(l) do
+    local id, drop = e.auctionID, false
+    if id then
+      local fp = firstPost[id]
+      if e.kind == "cancel" and lastIndex[id] > i then
+        drop = true                                    -- the auction carried on after this "cancel"
+      elseif e.kind == "post" and fp and fp ~= e then
+        drop = true                                    -- the same auction recorded as a new post again
+      elseif (e.kind == "sold" or e.kind == "post") and fp and fp.unit and (e.qty or 0) > 1
+          and e.unit == fp.unit * e.qty then
+        e.unit, e.repaired = fp.unit, true             -- a Sold row's total taken as the unit price
+        changed = changed + 1
+      end
+    end
+    if drop then changed = changed + 1 else keep[#keep + 1] = e end
+  end
+  db.ledger = keep
+  db.ledgerRepair = 1
+  cache = nil
+  return changed
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -222,13 +333,16 @@ function H.AUCTION_HOUSE_AUCTION_CREATED(auctionID)
   -- No pending post (posted by another addon): the next owned-auction snapshot records it, inferred.
 end
 
+-- Only a pending mark: the event also fires when part of a commodity auction sells (D-047). The next owned list
+-- confirms it (auction gone: cancel) or clears it (still listed).
 function H.AUCTION_CANCELED(auctionID)
-  local owned = State().owned
-  local rec = owned[auctionID]
-  if rec and rec.itemID then
-    Ledger.Add("cancel", rec.itemID, rec.qty, rec.unit, "AUCTION_CANCELED", { auctionID = auctionID })
-  end
-  owned[auctionID] = nil
+  local rec = State().owned[auctionID]
+  if rec then rec.cancelPending = true end
+end
+
+function H.AUCTION_HOUSE_AUCTIONS_EXPIRED(auctionID)
+  local rec = State().owned[auctionID]
+  if rec then rec.expiredEvent = true end
 end
 
 H.OWNED_AUCTIONS_UPDATED = function() Ledger.OnOwnedUpdated() end
@@ -236,6 +350,7 @@ H.OWNED_AUCTIONS_UPDATED = function() Ledger.OnOwnedUpdated() end
 function H.AUCTION_HOUSE_CLOSED() pendingBuy = nil pendingPost = nil end
 
 function H.AUCTION_HOUSE_SHOW()
+  sessionUpdates = 0
   Ledger.Hook()
   -- One read-only refresh of our own listings (Blizzard throttles it). Without it, sales only show up once the
   -- player opens the Auctions tab. Switch off with WuweiDB.ledgerQuery = false. [TODO-INGAME] sorts argument.
@@ -283,6 +398,7 @@ function Ledger.Init()
   db.ledger = db.ledger or {}
   db.ledgerVersion = db.ledgerVersion or Ledger.VERSION
   State()
+  Ledger.Repair()
   if Ledger.events then return end
   local ev = CreateFrame("Frame")
   for name in pairs(H) do ev:RegisterEvent(name) end

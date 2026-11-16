@@ -234,7 +234,10 @@ def test_ledger_events():
     # Cancel via AUCTION_CANCELED (known from a post); unknown ids ignored
     cf.CachePendingPost(cf, g.mkLoc(2589), 2, 100, 40); g.fire("AUCTION_HOUSE_AUCTION_CREATED", 950)
     g.fire("AUCTION_CANCELED", 950); g.fire("AUCTION_CANCELED", 123)
-    assert [x.kind for x in tail(n + 3)] == ["post", "cancel"]
+    assert [x.kind for x in tail(n + 3)] == ["post"]                     # pending until the owned list confirms (D-047)
+    snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")                        # 950 gone: cancel confirmed
+    assert [(x.kind, x.qty, x.src) for x in tail(n + 3)] == [("post", 100, "AUCTION_HOUSE_AUCTION_CREATED"),
+                                                             ("cancel", 100, "AUCTION_CANCELED")]
     # A post made elsewhere is seen by snapshot only (inferred)
     snap(rt, g, A(960, 2772, 5, 900, 43000)); g.fire("OWNED_AUCTIONS_UPDATED")
     e = L()[n + 6]
@@ -268,7 +271,7 @@ def test_cost_basis_pnl_cap_slash():
     assert tuple(Lg.CostBasis(4338)) == (400, 150) and (r.heldQty, r.heldCost) == (150, 60000)
     add("sold", 2589, 10, 100)                                               # sold with no buy on record: cost 0, flagged
     r = Lg.PnL(); assert r.unbasedSoldQty == 10 and r.realized == 13250 + 950
-    assert {k: v for k, v in r.counts.items()} == {"buy": 2, "post": 1, "sold": 2, "cancel": 1, "expired": 0}
+    assert {k: v for k, v in r.counts.items()} == {"buy": 2, "post": 1, "sold": 2, "cancel": 1, "expired": 0, "invoice": 0}
     g.zone = "Gadgetzan"                                                     # Blackwater: assumed 15% cut
     add("sold", 4338, 10, 1000); r = Lg.PnL()
     assert r.netRevenue == 33250 + 950 + 8500
@@ -325,11 +328,76 @@ def test_partial_sales():
     g.server += 300; snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")
     tail = [(x.kind, x.qty, x.partial) for x in list(L().values())[-3:]]
     assert tail == [("post", 100, None), ("sold", 40, True), ("expired", 60, None)], tail
-    # status Sold with a smaller quantity is the API's own sale record: no partial entry, one sold entry for rec.qty
+    # A Sold row alone states only its own units (D-047): 4 sold, the other 6 wait until the id leaves the list
     snap(rt, g, A(903, 4304, 10, 500, 9000)); g.fire("OWNED_AUCTIONS_UPDATED")
     m = len(L())
-    snap(rt, g, A(903, 4304, 4, 500, 9000, 1)); g.fire("OWNED_AUCTIONS_UPDATED")
-    e = L()[m + 1]; assert (e.kind, e.qty, e.partial) == ("sold", 10, None) and len(L()) == m + 1
+    snap(rt, g, A(903, 4304, 4, 2000, 9000, 1)); g.fire("OWNED_AUCTIONS_UPDATED"); g.fire("OWNED_AUCTIONS_UPDATED")
+    e = L()[m + 1]
+    assert (e.kind, e.qty, e.unit, e.partial, e.inferred) == ("sold", 4, 500, None, None) and len(L()) == m + 1
+    snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")
+    e = L()[m + 2]; assert (e.kind, e.qty, e.inferred) == ("sold", 6, True) and len(L()) == m + 2
+
+
+def test_commodity_partial_sale_d047():
+    """The Deviate Scale case: 77 posted, 21 bought. AUCTION_CANCELED fires, the sold part comes back as its own
+    Sold row under the same id priced as a total, a later visit's first list is empty. One post, one sold, no cancel."""
+    rt, ns, g, ah = boot2()
+    L = lambda: [(e.kind, e.qty, e.unit, e.inferred, e.partial) for e in g.WuweiDB.ledger.values()]
+    snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED"); snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")   # baselined
+    snap(rt, g, A(87349288, 6470, 77, 578, 86000)); g.fire("OWNED_AUCTIONS_UPDATED")
+    assert L() == [("post", 77, 578, True, None)]
+    g.fire("AUCTION_CANCELED", 87349288)                                       # not a cancel: 21 were bought
+    snap(rt, g, A(87349288, 6470, 21, 12138, 0, 1), A(87349288, 6470, 56, 578, 85900))
+    g.fire("OWNED_AUCTIONS_UPDATED")
+    assert L()[1:] == [("sold", 21, 578, None, True)], L()                     # priced at our unit, stated by the Sold row
+    rec = g.WuweiDB.ledgerState.owned[87349288]
+    assert rec.qty == 56 and rec.cancelPending is None
+    g.fire("OWNED_AUCTIONS_UPDATED"); assert len(L()) == 2                     # idempotent
+    snap(rt, g, A(87349288, 6470, 56, 578, 85000)); g.fire("OWNED_AUCTIONS_UPDATED"); assert len(L()) == 2  # Sold row gone
+    # Next visit: the first list arrives empty, then the real one. Nothing resolved, nothing re-posted.
+    g.fire("AUCTION_HOUSE_SHOW"); snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")
+    snap(rt, g, A(87349288, 6470, 56, 578, 80000)); g.fire("OWNED_AUCTIONS_UPDATED")
+    assert len(L()) == 2 and g.WuweiDB.ledgerState.owned[87349288].qty == 56
+    # The other 56 sell later: a Sold row for them (with or without the old 21 row still showing)
+    snap(rt, g, A(87349288, 6470, 21, 12138, 0, 1), A(87349288, 6470, 56, 32368, 0, 1))
+    g.fire("OWNED_AUCTIONS_UPDATED")
+    assert L()[2:] == [("sold", 56, 578, None, None)], L()
+    snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED"); assert len(L()) == 3        # leaves the list quietly
+    # A real cancel: event, then the auction is gone
+    snap(rt, g, A(5, 2589, 40, 30, 80000)); g.fire("OWNED_AUCTIONS_UPDATED")
+    g.fire("AUCTION_CANCELED", 5); snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")
+    assert L()[-1] == ("cancel", 40, 30, None, None)
+    # The expiry event replaces the time guess
+    snap(rt, g, A(6, 2589, 10, 30, 80000)); g.fire("OWNED_AUCTIONS_UPDATED")
+    g.fire("AUCTION_HOUSE_AUCTIONS_EXPIRED", 6); snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")
+    e = list(g.WuweiDB.ledger.values())[-1]
+    assert (e.kind, e.qty, e.src, e.inferred) == ("expired", 10, "AUCTION_HOUSE_AUCTIONS_EXPIRED", None)
+    # An auction first seen already sold: unit from the Sold row's total
+    snap(rt, g, A(7, 4338, 20, 8000, 0, 1)); g.fire("OWNED_AUCTIONS_UPDATED")
+    assert L()[-2:] == [("post", 20, 400, True, None), ("sold", 20, 400, None, None)], L()
+
+
+def test_repair_d047():
+    """The one-time repair turns the ledger the old code wrote into what happened."""
+    old = """{
+      { ts = 1, kind = "post", itemID = 6470, qty = 77, unit = 578, house = 117, auctionID = 87349288, inferred = true, src = "OWNED_AUCTIONS_UPDATED" },
+      { ts = 2, kind = "cancel", itemID = 6470, qty = 77, unit = 578, house = 117, auctionID = 87349288, src = "AUCTION_CANCELED" },
+      { ts = 3, kind = "post", itemID = 6470, qty = 21, unit = 12138, house = 117, auctionID = 87349288, inferred = true, src = "OWNED_AUCTIONS_UPDATED" },
+      { ts = 3, kind = "sold", itemID = 6470, qty = 21, unit = 12138, house = 117, auctionID = 87349288, src = "OWNED_AUCTIONS_UPDATED" },
+      { ts = 4, kind = "buy", itemID = 13927, qty = 20, unit = 379, total = 7580, house = 114, src = "COMMODITY_PURCHASE_SUCCEEDED" },
+      { ts = 5, kind = "post", itemID = 6470, qty = 56, unit = 578, house = 117, auctionID = 87349288, inferred = true, src = "OWNED_AUCTIONS_UPDATED" },
+      { ts = 6, kind = "post", itemID = 2589, qty = 5, unit = 10, house = 114, auctionID = 9, src = "AUCTION_HOUSE_AUCTION_CREATED" },
+      { ts = 7, kind = "cancel", itemID = 2589, qty = 5, unit = 10, house = 114, auctionID = 9, src = "AUCTION_CANCELED" },
+    }"""
+    rt, ns = p1.boot(extra=EXTRA)
+    g = rt.globals()
+    g.WuweiDB.ledger = rt.eval(old)
+    g.WuweiDB.ledgerRepair = None
+    assert ns.Ledger.Repair() == 4
+    got = [(e.kind, e.itemID, e.qty, e.unit, e.repaired) for e in g.WuweiDB.ledger.values()]
+    assert got == [("post", 6470, 77, 578, None), ("sold", 6470, 21, 578, True), ("buy", 13927, 20, 379, None),
+                   ("post", 2589, 5, 10, None), ("cancel", 2589, 5, 10, None)], got   # a real last cancel stays
+    assert ns.Ledger.Repair() == 0 and g.WuweiDB.ledgerRepair == 1                      # once only
 
 
 def test_house_confidence_guard():
@@ -409,6 +477,8 @@ def main():
     test_ledger_events()
     test_cost_basis_pnl_cap_slash()
     test_partial_sales()
+    test_commodity_partial_sale_d047()
+    test_repair_d047()
     test_house_confidence_guard()
     test_no_restricted_calls()
     print("Wuwei phase 2 harness: OK")

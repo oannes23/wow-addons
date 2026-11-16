@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+- **Fix: ledger misread a partly sold commodity auction** (SPEC D-047). Seen on 77 Deviate Scales with 21 bought: the ledger recorded a cancel you never made, booked the 21 at the whole sale's total (1g 21s each instead of 5s 78c) and recorded the remaining 56 as a second post. Now:
+  - a partial sale is one `sold` entry at your listing price;
+  - a cancel counts only once the auction is really gone (the game also fires its cancel event when part of an auction sells);
+  - the game's own expiry event is used when it fires;
+  - a visit's first, possibly empty, auction list no longer drops records.
+  - Existing ledgers are repaired once on login (entries marked `repaired`).
+- **Mail invoices** (SPEC D-048). Opening a mailbox records each "Auction successful" mail with the exact sale price, deposit refund, AH cut and money received, plus expired and canceled returns. Mail is never opened, taken or deleted for you. `/wuwei ledger` prints an exact `mail` line next to the estimate. `/run WuweiDB.mail = false` turns it off.
+
 ## 0.3.0
 - **Two-house prices on every item tooltip** (SPEC D-042 to D-046). Below Blizzard's sell price, every item you hover shows Horde and Blackwater, with the house you stand at on top:
   - a headline line per house: what it sells for (median of recent inferred sales), the cheapest listing now, and units sold per day;

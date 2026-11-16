@@ -12,7 +12,7 @@ local format, floor, ipairs = string.format, math.floor, ipairs
 local Post = {}
 ns.Post = Post
 
--- AH cut. Both rates are ASSUMED (Classic: 5% faction, 15% neutral) until measured in game. [TODO-INGAME]
+-- AH cut. Blackwater 15% confirmed by a sale invoice (2026-11-15); faction 5% assumed (Classic). [TODO-INGAME: faction]
 Post.CUT_FACTION = 0.05
 Post.CUT_BLACKWATER = 0.15
 

@@ -50,3 +50,9 @@ Append-only. Each entry: **symptom → cause → rule**. Read this before starti
 - Symptom: a harness assertion on a mocked Lua record failed, then raised `'cython_function_or_method' object has no attribute 'values'`. `rec.items` and `rec.keys` returned lupa's `_LuaTable.items`/`.keys` methods, not the Lua fields.
 - Cause: lupa exposes `keys()`, `values()`, `items()` as Python attributes on every Lua table; attribute access prefers them over same-named Lua fields.
 - Rule: in `tools/luatest` mocks never name Lua fields `keys`, `values` or `items` if Python reads them with dot syntax; read them as `t["keys"]` or rename (`sentKeys`, `nitems`).
+
+## P-011 · `GetItemInfo` sell price is not the vendor price (2026-11-15)
+- Symptom: analysis flagged Iron Grenades (item 4390) on the Horde AH at 1.8s as a vendor flip against a 5s sell price. In game, the tooltip sell price is **1s 25c**.
+- Cause: the `sell` field in collector `dim/items.csv` comes from `GetItemInfo` (ItemDataExport, 2026-11-09), which returned 500c. The value the vendor actually pays differs: here exactly 4× lower [INGAME 2026-11-15]. Not a global scale: Deviate Scale (6470) shows 20c in both `GetItemInfo` and the tooltip [INGAME 2026-11-15], so the gap is item-specific (likely a hotfix after the 2026-11-09 export, or a client-cache value).
+- Rule: never base a trade on `GetItemInfo` sell prices or on `dim_items.sell`. Treat them as an upper bound until a tooltip comparison across several items settles it, and in game confirm with one cheap test sale. Deposits and disenchant-versus-vendor comparisons that use `sell` inherit the error.
+

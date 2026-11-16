@@ -25,7 +25,7 @@ def strip(s):
 
 STEALS_EXTRA = r"""
 aq = {}; forbidden = {}; sounds = {}
-keysWork = true; keysExact = false; respond = "sync"; full = true; ready = true; moreRows = nil; pending = nil
+keysWork = true; keysExact = false; keysZeroRows = true; respond = "sync"; full = true; ready = true; moreRows = nil; pending = nil
 ILVL = { [12784] = 63 }   -- item levels the client has cached (C_Item.GetItemInfo return 4)
 browseResults = {}
 -- LIVE[itemID] = { {minPrice, itemLevel}, ... } : what the house lists right now. CLASS[itemID] = {classID, subclassID}
@@ -72,6 +72,20 @@ C_AuctionHouse.SearchForItemKeys = function(keys, sorts)
       local keep = {}
       for _, r in ipairs(rows) do if set[r.itemKey.itemID][r.itemKey.itemLevel] then keep[#keep+1] = r end end
       rows = keep
+    end
+    -- keysZeroRows: the live server answers every requested key; a key with nothing listed comes back as a row with
+    -- totalQuantity 0 and minPrice 0 (seen in game 2026-11-15: STEAL rows at 0c that Search showed empty).
+    if keysZeroRows then
+      for _, k in ipairs(keys) do
+        local hit = false
+        for _, r in ipairs(rows) do
+          if r.itemKey.itemID == k.itemID and r.itemKey.itemLevel == (k.itemLevel or 0) then hit = true end
+        end
+        if not hit then
+          rows[#rows+1] = { itemKey = { itemID = k.itemID, itemLevel = k.itemLevel or 0, itemSuffix = 0,
+                            battlePetSpeciesID = 0 }, minPrice = 0, totalQuantity = 0, containsOwnerItem = false }
+        end
+      end
     end
     deliver(rows)
   end
@@ -256,15 +270,51 @@ def test_threshold_and_removal():
     live(rt, g)                                                            # bought: complete reply lacks it -> removed
     S.Scan(); run(g, ns)
     assert found_ids(ns) == []
-    g.full = False                                                         # incomplete reply: unknown, but paged
+    g.full = False                                                         # keys reply: complete by construction
     g.moreRows = rt.eval("{ { itemKey = { itemID = 13335 }, minPrice = 4000000 } }")
     live(rt, g, i13518=[(150000,)])
+    g.aq = rt.eval("{}")
     before = len(g.printed); S.Scan(); run(g, ns)
+    assert qs(g) == ["keys"], qs(g)                                        # D-041: no RequestMoreBrowseResults
+    assert found_ids(ns) == [13518]
+    g.full = False; S.keysOK = False; g.aq = rt.eval("{}")                 # browse fallback: incomplete reply is paged
+    live(rt, g, i13518=[(150000,)], i13335=[(4000000,)])                   # 13335's own class job must list it too
+    S.Scan(); run(g, ns)
     assert "more" in qs(g) and found_ids(ns) == [13335, 13518], (qs(g), found_ids(ns))
+    S.keysOK = None
     assert "STEAL [Recipe: Sample] listed at 15g" in out(g, before)        # cheaper than announced: announced again
     # Closing the AH clears what was found; reopening starts clean
     g.fire("AUCTION_HOUSE_CLOSED"); assert found_ids(ns) == []
     g.fire("AUCTION_HOUSE_SHOW"); assert ns.Panel.frame.steals.text.startswith("Steals: 4 watched")
+    no_forbidden(g)
+
+
+def test_zero_quantity_rows_are_not_listings():
+    """In game 2026-11-15: 29 STEAL rows at 0c / 0% of fair, Search empty; scan stopped at 15/22 jobs (40 queries)."""
+    rt, ns, g = boot()
+    S = ns.Steals
+    live(rt, g)                                                            # nothing listed at all
+    g.full = False                                                         # live server: keys reply not "full"
+    before = len(g.printed)
+    S.Scan(); run(g, ns)
+    assert qs(g) == ["keys"], qs(g)                                        # one query, no paging
+    assert found_ids(ns) == [] and "STEAL [" not in out(g, before) and len(g.sounds) == 0
+    assert "Steals scan: 0 found · queries: 1." in out(g, before)
+    # Gear: the ilvl-0 key comes back empty, the ilvl-63 key has the listing: the real row wins
+    live(rt, g, i12784=[(900000, 63)])
+    S.Scan(); run(g, ns)
+    assert found_ids(ns) == [12784] and ns.Steals.found[12784].price == 900000
+    # Bought: next reply carries only zero rows for it -> row removed
+    live(rt, g)
+    S.Scan(); run(g, ns)
+    assert found_ids(ns) == []
+    # Passive harvest of a favorites-style browse with a zero row: no alert, clears a stale find
+    S.Observe(13518, 100000, None)
+    assert found_ids(ns) == [13518]
+    S.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 0, totalQuantity = 0 } }"))
+    assert found_ids(ns) == []
+    assert S.Observe(13518, 0, None) is False and found_ids(ns) == []
+    g.full = True
     no_forbidden(g)
 
 
@@ -518,6 +568,7 @@ def main():
     test_absent_steals_is_noop()
     test_scan_keys_path_alerts_and_panel()
     test_threshold_and_removal()
+    test_zero_quantity_rows_are_not_listings()
     test_budget_rotation_and_throttle()
     test_keys_fallback_to_class_browse()
     test_deferred_replies_and_player_browse_stops()

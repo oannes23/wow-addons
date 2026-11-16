@@ -2,7 +2,7 @@
 ## Title: Wuwei
 ## Notes: Surfaces the right AH action at the right moment from your market pipeline (buy, sell, shuttle, hold, steals)
 ## Author: oannes23
-## Version: 0.2.0
+## Version: 0.3.0
 ## IconTexture: Interface\Icons\INV_Misc_QuestionMark
 ## SavedVariables: WuweiDB
 ## AddonCompartmentFunc: Wuwei_OnCompartmentClick
@@ -10,8 +10,10 @@
 Locales\enUS.lua
 Data\Builtin.lua
 Data\Plan.lua
+Data\Prices.lua
 Plan.lua
 House.lua
+Prices.lua
 Ledger.lua
 Post.lua
 Tooltip.lua

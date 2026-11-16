@@ -108,6 +108,10 @@ end
 function Steals.Observe(id, price, key)
   local e = Steals.Entry(id)
   if not e then return false end
+  if type(price) ~= "number" or price <= 0 then -- not a listing (D-041)
+    found[id] = nil
+    return false
+  end
   if S.job and S.job.seen then S.job.seen[id] = true end
   if price > e.buyMax then
     found[id] = nil
@@ -125,14 +129,22 @@ end
 function Steals.Harvest(results)
   if not (Steals.On() and type(results) == "table") then return 0 end
   local s = Steals.Data()
-  local best = {}
+  local best, empty = {}, {}
   for _, r in ipairs(results) do
     local key = r.itemKey
     local id = key and key.itemID
-    if id and s.items[id] and type(r.minPrice) == "number" and (not best[id] or r.minPrice < best[id].minPrice) then
-      best[id] = r
+    if id and s.items[id] then
+      -- SearchForItemKeys (and favorites browse) answer every requested key, including keys with nothing listed:
+      -- totalQuantity 0, minPrice 0. Blizzard's list dims those rows ("noneAvailable"). They are not listings (D-041).
+      local p, q = r.minPrice, r.totalQuantity
+      if type(p) == "number" and p > 0 and (type(q) ~= "number" or q > 0) then
+        if not best[id] or p < best[id].minPrice then best[id] = r end
+      else
+        empty[id] = true
+      end
     end
   end
+  for id in pairs(empty) do if not best[id] then found[id] = nil end end
   local new = 0
   for id, r in pairs(best) do
     if Steals.Observe(id, r.minPrice, r.itemKey) then new = new + 1 end
@@ -382,7 +394,9 @@ local function Answered(failed)
   if not (S.active and S.awaiting and job) then return end
   S.awaiting = nil
   job.answered = true
-  job.full = failed and true or C_AuctionHouse.HasFullBrowseResults()
+  -- A keys reply holds every requested key (at most CHUNK): it is complete, and RequestMoreBrowseResults after it
+  -- only burns queries (D-041). Browse replies page until HasFullBrowseResults.
+  job.full = failed and true or job.kind == "keys" or C_AuctionHouse.HasFullBrowseResults()
   if failed then job.failed = true end
   if job.kind == "keys" and not failed then Steals.keysOK = true end
 end

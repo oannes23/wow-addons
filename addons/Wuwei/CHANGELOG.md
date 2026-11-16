@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+- **Two-house prices on every item tooltip** (SPEC D-042 to D-046). Below Blizzard's sell price, every item you hover shows Horde and Blackwater, with the house you stand at on top:
+  - a headline line per house: what it sells for (median of recent inferred sales), the cheapest listing now, and units sold per day;
+  - a detail line: median listing, units listed and near the floor, 7-day price change, and the number of sales behind the price;
+  - when they apply: a haul line (profit per unit buying here and selling at the other house, after its cut), vendor flags (floor below vendor price; vendor beats the AH), stack totals, and the data age.
+- `/wuwei prices full|short|off` (default full; no argument cycles). Short keeps one line per house plus the haul and vendor flags.
+- Needs `Data/Prices.lua`, which `wowf-analysis export-addon` now writes next to `Plan.lua` (private, gitignored). Without it the block stays off.
+- **Fix: fake steals at 0c.** The item-key search returns a row for every watched item, including items with nothing listed (quantity 0, price 0). Those were announced as `STEAL ... listed at 0c (0%)` and Search came up empty. They're now ignored, and such a row clears an old find (SPEC D-041).
+- **Fix: scan stopping partway (about 15 of 22 steps, "partial").** Item-key replies were being paged twice each, spending the 40-query budget. They're complete in one reply now, so a full scan takes about 22 queries and finishes in one click.
+
 ## 0.2.0
 - **Steals watchlist** (SPEC D-033 to D-040). The pipeline's plan may now carry `steals`: niche, often-mispriced non-commodity items (recipes, pets, mounts, rare/epic BoEs) with a fair value and an alert price.
 - **Scan steals** button in the AH panel and `/wuwei steals scan`: one click reads the current minimum listing of every watched item (`C_AuctionHouse.SearchForItemKeys`, falling back to category and name browse if that never answers). At most 40 queries per click, sharing Wuwei's search throttle and leaving room for your own searches. It never starts by itself, and it stops if you search yourself.

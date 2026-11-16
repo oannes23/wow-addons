@@ -1,6 +1,7 @@
 -- Wuwei · WoW: Forever (Interface 16001, WOW_PROJECT_CAMELOT)
 -- Phase 1: plan data, tooltip line, AH side panel, house detection. Phase 2: post helper, trade ledger.
--- Phase 2b: steals watchlist scan (Steals.lua). No AH data here is secret-valued.
+-- Phase 2b: steals watchlist scan (Steals.lua). Phase 2c: two-house price block on tooltips (Prices.lua).
+-- No AH data here is secret-valued.
 local addonName, ns = ...
 
 local format = string.format
@@ -13,6 +14,7 @@ local DEFAULTS = {
   shuttle = false, -- faction <-> Blackwater shuttle plays (SPEC D-028); off = faction side only, shuttle as info
   steals = true, -- steals watchlist: scan button, harvest, alerts, tooltip line (SPEC D-040)
   stealsSound = true, -- alert sound on a new steal
+  prices = "full", -- two-house price block on item tooltips: "full" | "short" | "off" (SPEC D-044)
   house = nil, -- manual override (house id); nil = auto-detect
 }
 
@@ -45,6 +47,7 @@ local function Status()
     ns.db.shuttle and "" or format(" (%d shuttle items shown as info only)", Plan.ShuttleHidden(house))))
   Say(format("ledger entries: %d | post helper: %s", #ns.Ledger.Entries(), tostring(ns.db.post)))
   Say(ns.Steals.StatusLine())
+  Say(ns.Prices.StatusLine())
 end
 
 local function Probe()
@@ -101,9 +104,15 @@ local function OnSlash(msg)
     ns.Keys.Slash(rest)
   elseif cmd == "steals" then
     ns.Steals.Slash(rest)
+  elseif cmd == "prices" then
+    if ns.Prices.Slash(rest) then
+      Say(ns.Prices.StatusLine())
+    else
+      Say("usage: /wuwei prices [full | short | off]  (no argument cycles)")
+    end
   else
     Say("usage: /wuwei [status | house <id|auto> | toggle | shuttle [on|off] | post | ledger [clear confirm] | keys [default] | "
-      .. "steals [on|off|scan|sound] | probe]")
+      .. "steals [on|off|scan|sound] | prices [full|short|off] | probe]")
   end
 end
 

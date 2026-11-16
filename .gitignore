@@ -14,3 +14,6 @@ addons/ItemDataExport/Data/Pairs.lua
 
 # Wuwei plan data is generated from the private AH archive (wowf-ah-analysis)
 addons/Wuwei/Data/Plan.lua
+
+# Wuwei price table, same source (wowf-ah-analysis export-addon)
+addons/Wuwei/Data/Prices.lua

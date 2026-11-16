@@ -150,7 +150,7 @@ end
 
 -- INFO is muted orange: shuttle information, not a play.
 local COLORS = { SELL = "ff40e060", BUY = "ff40c0ff", SHUTTLE = "ffffa030", HOLD = "ffa0a0a0", AVOID = "ffff4040",
-  INFO = "ffb08050", STEAL = "ffff66cc" } -- STEAL: watchlist listing at or below its alert price (SPEC D-037)
+  INFO = "ffb08050", STEAL = "ffff66cc", CHECK = "ffffcc66" } -- STEAL: watchlist listing at or below its alert price (SPEC D-037); CHECK: same, but depth unverified (D-051)
 local LABELS = { INFO = "SHUTTLE (off)" }
 function Plan.Colorize(signal, text) return "|c" .. (COLORS[signal] or "ffffffff") .. text .. "|r" end
 function Plan.Label(signal) return LABELS[signal] or signal end

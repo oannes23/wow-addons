@@ -35,7 +35,7 @@ local QUALITY_FILTERS = { "PoorQuality", "CommonQuality", "UncommonQuality", "Ra
 -- Scan state. found/notified live for one AH visit (cleared on close, D-037).
 local S = { active = false, queue = {}, qi = 0, sent = 0 }
 Steals.state = S
-local found, notified = {}, {}
+local found, notified, notifiedCheck, verdict = {}, {}, {}, {} -- verdict[id]: the player's own item search (D-051)
 Steals.found = found
 
 local function Say(msg) print("|cff00ccffWuwei|r " .. msg) end
@@ -44,13 +44,49 @@ local function Money(c) return ns.Plan.Money(c) end
 ----------------------------------------------------------------------------------------------------
 -- Data
 ----------------------------------------------------------------------------------------------------
--- The steals block of the active plan, or nil (old plan, or no data): then the whole feature is off.
+local function AHOpen()
+  local ahf = _G.AuctionHouseFrame
+  return ahf and ahf:IsShown() and ahf or nil
+end
+
+local lastHouse -- last house detected at an AH (or confidently elsewhere)
+
+-- The house whose steals block is active (D-050): at an AH, or with a confident detection or `/wuwei house N`, the
+-- detected house (remembered); otherwise the last remembered one, else 114.
+function Steals.ActiveHouse()
+  local h, _, confident = ns.House.Detect()
+  if h and (confident or AHOpen()) then lastHouse = h return h end
+  if AHOpen() then return h end
+  return lastHouse or 114
+end
+
+-- The steals block of the active plan, or nil (old plan, no data, or no block for this house): then the feature is off.
+-- stealsByHouse (0.5.0) wins; `steals` (the 114 block) serves plans without it.
 function Steals.Data()
   local p = ns.Plan.Get()
-  local s = p and p.steals
+  if not p then return nil end
+  local s
+  if type(p.stealsByHouse) == "table" then
+    local h = Steals.ActiveHouse()
+    s = h and p.stealsByHouse[h]
+  else
+    s = p.steals
+  end
   if type(s) ~= "table" or type(s.items) ~= "table" then return nil end
   return s
 end
+
+-- Floor-drop guard of a block: pct, max, or nil when the plan has none (then every alert is a STEAL as before).
+local function Near(s)
+  local n = s and s.near
+  if type(n) == "table" and type(n.pct) == "number" and type(n.max) == "number" then return n.pct, n.max end
+end
+
+-- "resell @Horde" when the item sells at another house than the active one, else nil.
+local function Resale(e, house)
+  if type(e.sell) == "number" and e.sell ~= house then return "resell @" .. ns.Plan.HouseName(e.sell) end
+end
+function Steals.ResaleText(e) return Resale(e, Steals.ActiveHouse()) end
 
 function Steals.On()
   return ns.db ~= nil and ns.db.enabled and ns.db.steals ~= false and Steals.Data() ~= nil
@@ -68,11 +104,6 @@ function Steals.Count()
   local s, n = Steals.Data(), 0
   if s then for _, e in pairs(s.items) do if Valid(e) then n = n + 1 end end end
   return n
-end
-
-local function AHOpen()
-  local ahf = _G.AuctionHouseFrame
-  return ahf and ahf:IsShown() and ahf or nil
 end
 
 local function Refresh() if ns.Panel and ns.Panel.Refresh then ns.Panel.Refresh() end end
@@ -98,14 +129,29 @@ local function PlayAlert()
   end
 end
 
-local function Notify(id, e, price)
+local function Notify(id, e, price, qty, check)
+  local house = Steals.ActiveHouse()
+  local resale = Resale(e, house)
+  local tail = ""
+  if resale then
+    tail = " · " .. resale .. (e.net and (" (net " .. Money(e.net) .. ")") or "")
+  end
+  if check then
+    Say(format(L["%s at %s (%d listed): may be a falling floor; Search to check depth"], ItemLink(id), Money(price), qty) .. tail)
+    return
+  end
   local pct = floor(price / e.fair * 100 + 0.5)
+  local depth = ""
+  if qty and select(2, Near(Steals.Data())) then
+    depth = " · " .. (qty == 1 and L["only listing"] or format(L["%d listed"], qty))
+  end
   Say(format(L["STEAL %s listed at %s · fair %s (%d%%) · alert ≤ %s · Search in the Wuwei panel"], ItemLink(id),
-    Money(price), Money(e.fair), pct, Money(e.buyMax)))
+    Money(price), Money(e.fair), pct, Money(e.buyMax)) .. depth .. tail)
 end
 
--- One watched item seen at `price` (lowest minPrice over its keys in this reply). Returns true if newly announced.
-function Steals.Observe(id, price, key)
+-- One watched item seen at `price` (lowest minPrice over its keys in this reply, `qty` = that row's totalQuantity).
+-- Returns true if a new STEAL was announced (the sound-worthy case; a CHECK is quiet, D-051).
+function Steals.Observe(id, price, key, qty)
   local e = Steals.Entry(id)
   if not e then return false end
   if type(price) ~= "number" or price <= 0 then -- not a listing (D-041)
@@ -117,11 +163,23 @@ function Steals.Observe(id, price, key)
     found[id] = nil
     return false
   end
-  found[id] = { id = id, price = price, key = key, fair = e.fair, buyMax = e.buyMax, pct = price / e.fair, at = GetTime() }
-  if notified[id] == nil or price < notified[id] then
-    notified[id] = price
-    Notify(id, e, price)
-    return true
+  local _, nearMax = Near(Steals.Data())
+  local check = nearMax ~= nil and type(qty) == "number" and qty > nearMax
+  local v = verdict[id]
+  if v and v.price ~= price then verdict[id], v = nil, nil end -- the listing it judged is gone or changed
+  if v then
+    if v.floor then
+      found[id] = nil
+      return false
+    end
+    check = false -- depth check confirmed it
+  end
+  found[id] = { id = id, price = price, key = key, fair = e.fair, buyMax = e.buyMax, pct = price / e.fair, at = GetTime(),
+    qty = qty, check = check or nil, net = e.net, sell = e.sell }
+  if notified[id] == nil or price < notified[id] or (notifiedCheck[id] and not check) then
+    notified[id], notifiedCheck[id] = price, check
+    if not v then Notify(id, e, price, qty, check) end
+    return not check
   end
   return false
 end
@@ -147,7 +205,7 @@ function Steals.Harvest(results)
   for id in pairs(empty) do if not best[id] then found[id] = nil end end
   local new = 0
   for id, r in pairs(best) do
-    if Steals.Observe(id, r.minPrice, r.itemKey) then new = new + 1 end
+    if Steals.Observe(id, r.minPrice, r.itemKey, r.totalQuantity) then new = new + 1 end
   end
   if new > 0 then PlayAlert() end
   return new
@@ -159,6 +217,7 @@ function Steals.Rows(limit)
   if not Steals.On() then return out end
   for _, f in pairs(found) do out[#out + 1] = f end
   sort(out, function(a, b)
+    if (a.check or false) ~= (b.check or false) then return not a.check end -- verified STEALs above CHECKs
     if a.pct ~= b.pct then return a.pct < b.pct end
     return a.id < b.id
   end)
@@ -405,7 +464,15 @@ end
 function Steals.Scan()
   if not (ns.db and ns.db.enabled) then Say(L["Wuwei is toggled off (/wuwei toggle)."]) return false end
   local s = Steals.Data()
-  if not s then Say(L["No steals list in the current plan."]) return false end
+  if not s then
+    local p = ns.Plan.Get()
+    if p and type(p.stealsByHouse) == "table" then
+      Say(format(L["No steals list for house %s."], tostring(Steals.ActiveHouse())))
+    else
+      Say(L["No steals list in the current plan."])
+    end
+    return false
+  end
   if ns.db.steals == false then Say(L["Steals are off (/wuwei steals on)."]) return false end
   if not AHOpen() then Say(L["Open the auction house first."]) return false end
   if S.active then Say(L["Steals scan already running."]) return false end
@@ -456,10 +523,16 @@ end
 
 function Steals.StatusLine()
   local s = Steals.Data()
-  if not s then return L["steals: no list in the current plan"] end
+  if not s then
+    local p = ns.Plan.Get()
+    if p and type(p.stealsByHouse) == "table" then
+      return format(L["steals: no list for house %s"], tostring(Steals.ActiveHouse()))
+    end
+    return L["steals: no list in the current plan"]
+  end
   local age = ns.Plan.ParseTime(s.generated)
   return format(L["steals: %s · %d watched (house %s, %s old) · sound %s"], ns.db.steals == false and "off" or "on",
-    Steals.Count(), tostring(s.house), age and ns.Plan.AgeText(math.max(0, GetServerTime() - age)) or "?",
+    Steals.Count(), tostring(s.house or Steals.ActiveHouse()), age and ns.Plan.AgeText(math.max(0, GetServerTime() - age)) or "?",
     ns.db.stealsSound == false and "off" or "on")
 end
 
@@ -471,9 +544,11 @@ function Steals.TooltipLine(id)
   local Plan = ns.Plan
   local parts = { Plan.Colorize("STEAL", "STEAL ≤ " .. Money(e.buyMax)),
     "fair " .. Money(e.fair) .. (e.n and (" (n " .. e.n .. ")") or "") }
-  if found[id] then parts[#parts + 1] = "live " .. Money(found[id].price) end
   local s = Steals.Data()
-  local house = ns.House.Detect()
+  local house = Steals.ActiveHouse()
+  local resale = Resale(e, house)
+  if resale then parts[#parts + 1] = resale .. (e.net and (" net " .. Money(e.net)) or "") end
+  if found[id] then parts[#parts + 1] = "live " .. Money(found[id].price) end
   if s.house and house ~= s.house then parts[#parts + 1] = "(" .. tostring(s.house) .. ")" end
   local t = Plan.ParseTime(s.generated)
   parts[#parts + 1] = t and Plan.AgeText(math.max(0, GetServerTime() - t)) or "?"
@@ -510,6 +585,69 @@ end
 ----------------------------------------------------------------------------------------------------
 -- Events
 ----------------------------------------------------------------------------------------------------
+-- Depth check (D-051): the player's own item search (Search click, Blizzard's buy frame) loaded every listing of one
+-- watched item. Read them (no query from here) and judge whether a cheap price stands alone or is a falling floor.
+local function Lowest(itemKey, pct)
+  local AH = C_AuctionHouse
+  local ok, n = pcall(AH.GetNumItemSearchResults, itemKey)
+  if not (ok and type(n) == "number" and n > 0) then return nil end
+  local rows, lowest = {}, huge
+  for i = 1, n do
+    local okr, r = pcall(AH.GetItemSearchResultInfo, itemKey, i)
+    local b = okr and type(r) == "table" and r.buyoutAmount
+    if type(b) == "number" and b > 0 then -- bid-only rows have no buyout
+      rows[#rows + 1] = { b, type(r.quantity) == "number" and r.quantity > 0 and r.quantity or 1 }
+      if b < lowest then lowest = b end
+    end
+  end
+  if #rows == 0 then return nil end
+  local cap, count = lowest * (1 + pct / 100), 0
+  for _, r in ipairs(rows) do if r[1] <= cap then count = count + r[2] end end
+  return lowest, count
+end
+
+function Steals.OnItemSearch(itemKey)
+  if not Steals.On() or type(itemKey) ~= "table" then return end
+  local id = itemKey.itemID
+  local e = id and Steals.Entry(id)
+  local s = Steals.Data()
+  local pct, nearMax = Near(s)
+  local AH = C_AuctionHouse
+  if not (e and pct and AH.GetNumItemSearchResults and AH.GetItemSearchResultInfo) then return end
+  local lowest, count = Lowest(itemKey, pct)
+  if not lowest then return end
+  local partial = false
+  if AH.HasFullItemSearchResults then
+    local ok, full = pcall(AH.HasFullItemSearchResults, itemKey)
+    partial = ok and full == false
+  end
+  local tail = partial and L[" (partial results)"] or ""
+  local v = verdict[id]
+  if count > nearMax then
+    if not (v and v.floor and v.price == lowest and v.count == count) then
+      Say(format(L["%s: %d listed within %d%% of %s: falling floor, not a steal"], ItemLink(id), count, pct, Money(lowest)) .. tail)
+    end
+    verdict[id] = { floor = true, price = lowest, count = count }
+    found[id] = nil
+  elseif lowest <= e.buyMax then
+    if not (v and not v.floor and v.price == lowest and v.count == count) then
+      Say(format(L["%s: STEAL confirmed, %d near %s"], ItemLink(id), count, Money(lowest)) .. tail)
+    end
+    verdict[id] = { price = lowest, count = count }
+    local f = found[id]
+    if f and f.price == lowest then
+      f.check = nil
+    else
+      found[id] = { id = id, price = lowest, key = itemKey, fair = e.fair, buyMax = e.buyMax, pct = lowest / e.fair,
+        at = GetTime(), qty = count, net = e.net, sell = e.sell }
+    end
+    notified[id], notifiedCheck[id] = math.min(notified[id] or lowest, lowest), false
+  else
+    verdict[id] = nil -- above the alert price: not a steal (D-037)
+    found[id] = nil
+  end
+end
+
 -- The player started a browse of their own (search bar, category, re-sort, favorites): stop, don't overwrite it.
 function Steals.OnPlayerBrowse()
   if S.active then Steals.Stop("player") end
@@ -543,6 +681,8 @@ end
 local function Clear()
   for k in pairs(found) do found[k] = nil end
   for k in pairs(notified) do notified[k] = nil end
+  for k in pairs(notifiedCheck) do notifiedCheck[k] = nil end
+  for k in pairs(verdict) do verdict[k] = nil end
 end
 
 local H = {}
@@ -564,6 +704,7 @@ function H.AUCTION_HOUSE_BROWSE_RESULTS_ADDED(added)
   if Steals.On() then Steals.Harvest(added) end
   Answered(false)
 end
+function H.ITEM_SEARCH_RESULTS_UPDATED(itemKey) Steals.OnItemSearch(itemKey) end
 function H.AUCTION_HOUSE_BROWSE_FAILURE() Answered(true) end
 function H.AUCTION_HOUSE_NEW_RESULTS_RECEIVED(itemKey)
   if itemKey == nil then Answered(false) end -- nil payload = a browse query (doc comment)

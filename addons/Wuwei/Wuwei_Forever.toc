@@ -2,7 +2,7 @@
 ## Title: Wuwei
 ## Notes: Surfaces the right AH action at the right moment from your market pipeline (buy, sell, shuttle, hold, steals)
 ## Author: oannes23
-## Version: 0.4.1
+## Version: 0.5.0
 ## IconTexture: Interface\Icons\INV_Misc_QuestionMark
 ## SavedVariables: WuweiDB
 ## AddonCompartmentFunc: Wuwei_OnCompartmentClick

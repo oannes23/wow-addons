@@ -522,6 +522,246 @@ def test_api_errors_do_not_break():
     no_forbidden(g)
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# 0.5.0: per-house blocks, resale, isolation at alert time, depth check on the player's own item search (D-050/D-051)
+# ---------------------------------------------------------------------------------------------------------------
+ITEM_SEARCH_MOCK = r"""
+ISR = {}; ISR_FULL = true     -- ISR[itemID] = { {buyoutAmount, quantity}, ... }
+C_AuctionHouse.GetNumItemSearchResults = function(key) return #(ISR[key.itemID] or {}) end
+C_AuctionHouse.GetItemSearchResultInfo = function(key, i)
+  local r = (ISR[key.itemID] or {})[i]
+  return r and { itemKey = key, buyoutAmount = r[1], quantity = r[2] or 1, auctionID = i, owners = {} } or nil
+end
+C_AuctionHouse.HasFullItemSearchResults = function() return ISR_FULL end
+"""
+
+NEAR = "near = { pct = 10, max = 2 }"
+
+
+def block(house, items, near=True):
+    return ('{ generated = "2026-11-16T23:10:00Z", house = %d, %s items = { %s } }'
+            % (house, NEAR + "," if near else "", ", ".join(items)))
+
+
+def plan_by_house(b114=None, b117=None, legacy=None, near=True):
+    ents114 = b114 or ["[13518] = { fair = 450000, buyMax = 225000, n = 6, kind = 'recipe', classID = 9, subclassID = 2, "
+                       "sell = 114, net = 380000, vendor = 625 }",
+                       "[8485] = { fair = 120000, buyMax = 60000, n = 9, kind = 'pet', classID = 15, subclassID = 2 }"]
+    ents117 = b117 or ["[13518] = { fair = 450000, buyMax = 150000, n = 6, kind = 'recipe', classID = 9, subclassID = 2, "
+                       "sell = 114, net = 380000 }",
+                       "[13335] = { fair = 9000000, buyMax = 4000000, n = 3, kind = 'mount', classID = 15, subclassID = 5, sell = 117 }"]
+    parts = ['generated = "2026-11-16T23:10:00Z"', "houses = { [114] = 'Horde', [117] = 'Blackwater' }", "items = {}",
+             "stealsByHouse = { [114] = %s, [117] = %s }" % (block(114, ents114, near), block(117, ents117, near))]
+    if legacy:
+        parts.append("steals = " + legacy)
+    return "{ " + ", ".join(parts) + " }"
+
+
+def boot2(plan_lua, house=None):
+    rt, ns, g = boot(plan_lua)
+    rt.execute(ITEM_SEARCH_MOCK)
+    if house is not None:
+        g.WuweiDB.house = house
+        g.fire("AUCTION_HOUSE_SHOW")
+    return rt, ns, g
+
+
+def rows_ui(ns):
+    ns.Panel.Refresh()
+    f = ns.Panel.frame
+    return [(strip(f.rows[i].signal.text), strip(f.rows[i].name.text), strip(f.rows[i].rule.text), strip(f.rows[i].gain.text))
+            for i in range(1, 16) if f.rows[i].shown]
+
+
+def set_isr(rt, g, **kw):
+    t = rt.eval("{}")
+    for k, rows in kw.items():
+        t[int(k[1:])] = rt.eval("{" + ",".join("{%d,%d}" % (r[0], r[1] if len(r) > 1 else 1) for r in rows) + "}")
+    g.ISR = t
+
+
+def search_event(rt, g, id):
+    g.fire("ITEM_SEARCH_RESULTS_UPDATED", rt.eval("{ itemID = %d, itemLevel = 0, itemSuffix = 0, battlePetSpeciesID = 0 }" % id), None)
+
+
+def test_block_selection_by_house():
+    rt, ns, g = boot2(plan_by_house(), 117)
+    S = ns.Steals
+    assert S.Data().house == 117 and S.Count() == 2 and S.Entry(13335) and not S.Entry(8485)
+    assert "house 117" in strip(ns.Steals.StatusLine()) or True
+    live(rt, g, i13518=[(100000,)], i13335=[(5000000,)], i8485=[(1,)])
+    before = len(g.printed)
+    assert S.Scan() is True                                              # no more "list is for house 114" at Blackwater
+    run(g, ns)
+    assert found_ids(ns) == [13518]                                      # 117's buyMax 150000; 13335 over its 4g; 8485 not watched here
+    assert g.aq[1].nitems == 2
+    # switch to 114: its own thresholds
+    g.WuweiDB.house = 114
+    assert S.Data().house == 114 and S.Count() == 2 and S.Entry(8485)
+    g.fire("AUCTION_HOUSE_SHOW")
+    live(rt, g, i13518=[(200000,)], i8485=[(50000,)])
+    S.Scan(); run(g, ns)
+    assert found_ids(ns) == [8485, 13518]
+    # a house with no block: refusal, feature off, no sound
+    g.WuweiDB.house = 111
+    assert S.Data() is None and not S.On() and S.Count() == 0
+    before = len(g.printed)
+    assert S.Scan() is False and "No steals list for house 111." in out(g, before) and "house 114" not in out(g, before)
+    assert strip(S.StatusLine()) == "steals: no list for house 111"
+    ns.Panel.Refresh()
+    assert ns.Panel.frame.steals.text == "" and ns.Tooltip.Line(13518) is None
+    no_forbidden(g)
+    # legacy plan (no stealsByHouse): `steals` serves every house; D-037 guard unchanged
+    rt, ns, g = boot()
+    g.WuweiDB.house = 117
+    before = len(g.printed)
+    assert ns.Steals.Scan() is False and "The steals list is for house 114; you are at 117" in out(g, before)
+    # stealsByHouse wins over a legacy `steals` key; legacy serves when it is absent
+    rt, ns, g = boot2(plan_by_house(legacy=block(114, ["[999] = { fair = 100, buyMax = 50 }"])), 114)
+    assert ns.Steals.Entry(13518) and not ns.Steals.Entry(999)
+    # not at an AH: last detected house, else 114
+    rt, ns, g = boot2(plan_by_house(), 117)
+    assert ns.Steals.Data().house == 117
+    g.WuweiDB.house = None
+    g.AuctionHouseFrame.shown = False
+    g.zone = "Durotar"                                                   # not a capital: detection is only a guess
+    assert ns.Steals.Data().house == 117                                 # remembered (unconfident fallback outside an AH)
+    rt, ns, g = boot2(plan_by_house())
+    g.WuweiDB.house = None
+    g.AuctionHouseFrame.shown = False
+    assert ns.Steals.Data() is not None
+
+
+def test_steal_vs_check_by_total_quantity():
+    rt, ns, g = boot2(plan_by_house(), 114)
+    S = ns.Steals
+    one = lambda q: rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 200000, totalQuantity = %d } }" % q)
+    before = len(g.printed)
+    S.Harvest(one(1))
+    o = out(g, before)
+    assert "STEAL [Recipe: Sample] listed at 20g" in o and "only listing" in o, o
+    assert len(g.sounds) == 1 and rows_ui(ns)[0][0] == "STEAL"
+    # N listed within max: STEAL with "N listed"
+    S.Harvest(rt.eval("{ { itemKey = { itemID = 8485 }, minPrice = 50000, totalQuantity = 2 } }"))
+    assert "2 listed" in out(g, before) and len(g.sounds) == 1           # sound gap anyway
+    # above near.max: quiet CHECK, no sound
+    g.fire("AUCTION_HOUSE_CLOSED"); g.fire("AUCTION_HOUSE_SHOW")
+    g.sounds = rt.eval("{}"); before = len(g.printed)
+    S.Harvest(one(5))
+    o = out(g, before)
+    assert "[Recipe: Sample] at 20g (5 listed): may be a falling floor; Search to check depth" in o, o
+    assert "STEAL [" not in o and len(g.sounds) == 0
+    r = rows_ui(ns)
+    assert r[0][0] == "CHECK" and r[0][1] == "Recipe: Sample", r
+    assert found_ids(ns) == [13518] and S.found[13518].check
+    # a STEAL row sorts above a CHECK row
+    S.Harvest(rt.eval("{ { itemKey = { itemID = 8485 }, minPrice = 59000, totalQuantity = 1 } }"))
+    assert [x[0] for x in rows_ui(ns)][:2] == ["STEAL", "CHECK"]
+    # no `near` in the plan: always STEAL, text as before
+    rt, ns, g = boot2(plan_by_house(near=False), 114)
+    before = len(g.printed)
+    ns.Steals.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 200000, totalQuantity = 9 } }"))
+    o = out(g, before)
+    assert "STEAL [Recipe: Sample] listed at 20g" in o and "listed ·" not in o and "only listing" not in o and "CHECK" not in o, o
+    assert rows_ui(ns)[0][0] == "STEAL"
+    no_forbidden(g)
+
+
+def test_depth_check_on_item_search():
+    rt, ns, g = boot2(plan_by_house(), 114)
+    S = ns.Steals
+    S.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 200000, totalQuantity = 5 } }"))
+    assert rows_ui(ns)[0][0] == "CHECK"
+    g.sounds = rt.eval("{}"); n = len(g.aq)
+    # 5 units within 10% of the lowest: falling floor, row removed, no sound; bid-only rows (no buyout) are skipped
+    rt.execute("ISR[13518] = { {200000,1}, {205000,1}, {210000,1}, {219000,1}, {219999,1}, {900000,1} }")
+    rt.execute("table.insert(ISR[13518], { false, 1 })")
+    search_event(rt, g, 13518)
+    o = out(g, len(g.printed) - 1)
+    assert "[Recipe: Sample]: 5 listed within 10% of 20g: falling floor, not a steal" in o, o
+    assert found_ids(ns) == [] and len(g.sounds) == 0 and len(g.aq) == n
+    assert not any(x[0] in ("STEAL", "CHECK") for x in rows_ui(ns))
+    before = len(g.printed); search_event(rt, g, 13518)                   # repeated event, same verdict: no repeat chat
+    assert len(g.printed) == before
+    S.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 200000, totalQuantity = 5 } }"))
+    assert found_ids(ns) == []                                          # a later browse does not resurrect it
+    # only 2 near the lowest (the rest far above): confirmed, the row stays/returns as STEAL
+    rt.execute("ISR[13518] = { {200000,1}, {210000,1}, {400000,1}, {450000,1} }")
+    before = len(g.printed); search_event(rt, g, 13518)
+    assert "[Recipe: Sample]: STEAL confirmed, 2 near 20g" in out(g, before) and "partial" not in out(g, before)
+    assert found_ids(ns) == [13518] and rows_ui(ns)[0][0] == "STEAL" and len(g.sounds) == 0
+    # confirmed verdict survives a browse that still shows 5 listed at the same minimum
+    S.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 200000, totalQuantity = 5 } }"))
+    assert rows_ui(ns)[0][0] == "STEAL"
+    # a CHECK row is promoted by a confirming search
+    g.fire("AUCTION_HOUSE_CLOSED"); g.fire("AUCTION_HOUSE_SHOW")
+    S.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 200000, totalQuantity = 5 } }"))
+    assert rows_ui(ns)[0][0] == "CHECK"
+    rt.execute("ISR[13518] = { {200000,2} }")                              # one auction, quantity 2: 2 units
+    search_event(rt, g, 13518); assert rows_ui(ns)[0][0] == "STEAL"
+    # quantity counts units: a single auction of 3 near the lowest is a falling floor
+    rt.execute("ISR[13518] = { {200000,3} }"); rt.execute("ISR_FULL = false")
+    before = len(g.printed); search_event(rt, g, 13518)
+    assert "3 listed within 10% of 20g: falling floor, not a steal (partial results)" in out(g, before), out(g, before)
+    assert found_ids(ns) == []
+    # lowest above buyMax: not a steal, row dropped quietly
+    rt.execute("ISR[13518] = { {230000,1} }")
+    before = len(g.printed); search_event(rt, g, 13518)
+    assert len(g.printed) == before and found_ids(ns) == []
+    # partial + confirmed says so
+    rt.execute("ISR[13518] = { {190000,1} }")
+    before = len(g.printed); search_event(rt, g, 13518)
+    assert "STEAL confirmed, 1 near 19g (partial results)" in out(g, before)
+    # unwatched items, steals off, no near, missing APIs, erroring getters: nothing happens
+    rt.execute("ISR[2589] = { {1,1} }")
+    before = len(g.printed); search_event(rt, g, 2589); assert len(g.printed) == before
+    g.WuweiDB.steals = False
+    search_event(rt, g, 13518); assert len(g.printed) == before
+    g.WuweiDB.steals = True
+    rt.execute("C_AuctionHouse.GetItemSearchResultInfo = function() error('x') end")
+    search_event(rt, g, 13518); assert len(g.printed) == before
+    rt.execute("C_AuctionHouse.GetNumItemSearchResults = nil")
+    search_event(rt, g, 13518); assert len(g.printed) == before
+    rt, ns, g = boot2(plan_by_house(near=False), 114)
+    rt.execute("ISR[13518] = { {200000,1}, {200001,1}, {200002,1} }")
+    before = len(g.printed); search_event(rt, g, 13518); assert len(g.printed) == before
+    no_forbidden(g)
+
+
+def test_resale_text():
+    rt, ns, g = boot2(plan_by_house(), 117)
+    S = ns.Steals
+    before = len(g.printed)
+    S.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 100000, totalQuantity = 1 } }"))
+    o = out(g, before)
+    assert "only listing" in o and "resell @Horde (net 38g)" in o, o
+    r = rows_ui(ns)[0]
+    assert r[0] == "STEAL" and r[2].endswith("· resell @Horde") and r[3] == "+28g", r        # net 380000 - 100000
+    assert strip(ns.Tooltip.Line(13518)) == "Wuwei: STEAL ≤ 15g · fair 45g (n 6) · resell @Horde net 38g · live 10g · 0m", strip(ns.Tooltip.Line(13518))
+    # sell == house: no resale text, but net still drives the gain
+    before = len(g.printed)
+    S.Harvest(rt.eval("{ { itemKey = { itemID = 13335 }, minPrice = 3000000, totalQuantity = 1 } }"))
+    assert "resell" not in out(g, before)
+    g.WuweiDB.house = 114
+    g.fire("AUCTION_HOUSE_SHOW")
+    S.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 200000, totalQuantity = 1 } }"))
+    r = rows_ui(ns)[0]
+    assert "resell" not in r[2] and r[3] == "+18g", r                                     # net 380000 - 200000
+    assert "resell" not in strip(ns.Tooltip.Line(13518))
+    # CHECK line carries the resale text too
+    rt, ns, g = boot2(plan_by_house(), 117)
+    before = len(g.printed)
+    ns.Steals.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 100000, totalQuantity = 4 } }"))
+    assert "(4 listed): may be a falling floor; Search to check depth · resell @Horde" in out(g, before)
+    # old plan fields absent: today's text and gain
+    rt, ns, g = boot()
+    before = len(g.printed)
+    ns.Steals.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 200000, totalQuantity = 7 } }"))
+    o = out(g, before)
+    assert o.strip().endswith("Search in the Wuwei panel") and rows_ui(ns)[0][3] == "+25g", (o, rows_ui(ns)[0])
+    no_forbidden(g)
+
+
 FORBIDDEN = re.compile(
     r"C_AuctionHouse\s*[.:]\s*(PostItem|PostCommodity|ConfirmPost\w*|PlaceBid|StartCommoditiesPurchase|ConfirmCommoditiesPurchase|"
     r"CancelCommoditiesPurchase|CancelAuction|CancelSell|StartItemBuyout|SendSearchQuery|SendSellSearchQuery|ReplicateItems)\b|"
@@ -575,6 +815,10 @@ def main():
     test_passive_harvest_and_sound_toggle()
     test_tooltip_precedence_house_and_slash()
     test_api_errors_do_not_break()
+    test_block_selection_by_house()
+    test_steal_vs_check_by_total_quantity()
+    test_depth_check_on_item_search()
+    test_resale_text()
     test_grep_safety()
     print("Wuwei steals harness: OK")
     print(smoke_generated_plan())

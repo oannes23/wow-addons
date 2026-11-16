@@ -58,10 +58,12 @@ function Panel.BuildRows(house)
   local rows = {}
   local Plan, Steals = ns.Plan, ns.Steals
   for _, st in ipairs(Steals and Steals.Rows() or {}) do
-    local gain = (st.fair - st.price) / 10000
+    local gain = ((st.net or st.fair) - st.price) / 10000 -- net at the resale house when the plan has it (D-050)
+    local resale = Steals.ResaleText(st)
     rows[#rows + 1] = {
-      id = st.id, signal = "STEAL", name = ItemName(st.id), steal = st,
-      rule = format(L["%s · %d%% of fair %s"], Plan.Money(st.price), floor(st.pct * 100 + 0.5), Plan.Money(st.fair)),
+      id = st.id, signal = st.check and "CHECK" or "STEAL", name = ItemName(st.id), steal = st,
+      rule = format(L["%s · %d%% of fair %s"], Plan.Money(st.price), floor(st.pct * 100 + 0.5), Plan.Money(st.fair))
+        .. (resale and (" · " .. resale) or ""),
       gain = gain, gainText = gain >= 1 and ("+" .. floor(gain) .. "g") or "",
     }
   end

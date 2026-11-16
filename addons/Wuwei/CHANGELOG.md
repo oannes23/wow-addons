@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+- **Steals work at Blackwater too** (SPEC D-050). The watchlist is now one list per house. At the Booty Bay AH the scan uses Blackwater's list and thresholds instead of refusing ("The steals list is for house 114"). At a house with no list you get "No steals list for house N." Plans from older exports still work: their one list is used as before.
+- **Resale hints.** When the plan says an item sells better at the other house, the chat alert, the panel row and the tooltip add `resell @Horde` (or `@Blackwater`). The gain shown is the expected take-home at the resale house (after the AH cut and expected deposit losses) minus the price, when the plan has it.
+- **Falling-floor guard** (SPEC D-051). Five listings at their steal price is a floor dropping, not a steal. If more than the plan's limit (2) are listed, the alert is a quiet `CHECK` row and one chat line (`(5 listed): may be a falling floor; Search to check depth`), with no sound. A lone listing now says `only listing`, since one of something is the likeliest to be a real mispricing.
+- **Depth check on your own Search.** When you click Search on a watched item (or search it yourself), Wuwei counts the listings within 10% of the cheapest. Too many: `falling floor, not a steal` and the row goes. Few: `STEAL confirmed, N near X`. It only reads what you already loaded, so it costs no searches, and it says `(partial results)` when the game has not loaded every listing. A seller posting several copies cheaply can look like a falling floor, so treat the verdict as a hint and look at the listings.
+
 ## 0.4.1
 - **Fix: each auction mail was recorded twice** (SPEC D-049). Taking the gold or the items from a mail, or the game loading the item a moment late, changed what Wuwei read from it, so the same mail was saved again. Seen on the first real mailbox visit: 8 entries for 4 mails, so the harness sale counted twice. A mail is now recognised by its subject, and later reads only fill in details that were missing.
 - **Fix: wrong quantity on returned stacks.** The quantity came from the first attached stack, so 10 crates returned in two stacks of 5 read as 5. It now comes from the subject (`Auction expired: Waylaid Crate: Apprentice Ore (10)`), so every mail entry has an exact quantity.

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.2
+- **The other faction's capitals are no longer listed** in the Fishing tooltip. From about skill 150, Stormwind, Ironforge and Darnassus (one shared fish table) filled a Horde player's top five and pushed out zones you can actually fish.
+
 ## 0.3.1
 - **Fix: zone names in the Fishing tooltip had no level colour or range** (SPEC D-008). Forever's client has no zone level data, so the game's map API returns nothing. StraightHook now carries the Vanilla zone ranges itself (Durotar 1–10, The Barrens 10–25, …) and colours them the way the world map would. Cities and Forever's new zones stay uncoloured.
 

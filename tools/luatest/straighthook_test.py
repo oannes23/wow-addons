@@ -355,17 +355,21 @@ def guide_forever_levels_test() -> None:
       C_Map.GetMapInfo = function(id) return { parentMapID = 0, name = MAPS[id] } end
       C_Map.GetMapChildrenInfo = function() return { { mapID = 1411, name = "Durotar" }, { mapID = 1413, name = "The Barrens" } } end
       C_Map.GetMapLevels = function() return 0, 0, 0, 0 end
+      AREAS[1519] = "Stormwind City"; MAPS[1453] = "Stormwind City"
+      function UnitFactionGroup() return "Horde", "Horde" end
       function UnitLevel() return 18 end
       QuestDifficultyColors = { difficult = "yellow" }
       function GetQuestDifficultyColor(lv) local d = lv - 18
         if d >= -4 then return "yellow" elseif d >= -10 then return "green" else return "grey" end end
       function RGBTableToColorCode(c) return "<" .. c .. ">" end
       function GetProfessionInfo(i) if i == 5 then return "Fishing", 136245, 87, 150, 0, 0, 356, 25 end end''')
-    ns.SEED = rt.eval('{ areas = { [14] = { base = -70, loot = { {6303, 100, 1} } }, [17] = { base = 55, loot = { {6308, 100, 1} } } } }')
+    ns.SEED = rt.eval('{ areas = { [14] = { base = -70, loot = { {6303, 100, 1} } }, [17] = { base = 55, loot = { {6308, 100, 1} } },'
+                      ' [1519] = { base = -20, loot = { {6303, 100, 1} } } } }')
     ns.PRICES = rt.eval("{}")
     ns.Info.Value = rt.eval("function(id) return { [114] = 10, [117] = 10 } end")
     text = "\n".join(f"{l[1]} | {l[2]}" for l in ns.Guide.Lines().values())
     assert "<green>Durotar 1–10|r" in text and "<yellow>The Barrens 10–25|r" in text, text
+    assert "Stormwind" not in text, text  # the other faction's capital is never listed
 
 
 if __name__ == "__main__":

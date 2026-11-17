@@ -77,5 +77,5 @@ Wuwei's ledger assumed each owned auction is one row and that `AUCTION_CANCELED`
 
 ## P-016 · Zone level ranges are empty on Forever: `C_Map.GetMapLevels` has no data (2026-11-17)
 - Symptom: StraightHook's zone colours (copied from the world map's `AreaLabelDataProvider`) never showed; every zone was white with no "N–M" range.
-- Cause: Forever's client tables set `ContentTuningID = 0` on every zone in UiMap and AreaTable [SRC: wago.tools DB2, wowf 1.60.1.70938]. The map's level ranges come from that tuning, so `GetMapLevels` returns nothing usable [INFER; TODO-INGAME `/dump C_Map.GetMapLevels(1411)`]. Classic Era's client has no zone tuning either.
+- Cause: Forever's client tables set `ContentTuningID = 0` on every zone in UiMap and AreaTable [SRC: wago.tools DB2, wowf 1.60.1.70938]. The map's level ranges come from that tuning, so `GetMapLevels` returns nothing usable [INGAME 2026-11-17: `0, 0, 0, 0`]. Classic Era's client has no zone tuning either.
 - Fix: ship the Vanilla ranges keyed by uiMapID (`StraightHook/Guide.lua` `Guide.ZONE_LEVELS`) and let the API override when it answers. Forever's new zones (Mount Hyjal 2482, Zephras Isle 2521/2665, Riverglades 2548, Shen'dralas 2652) have no known range.

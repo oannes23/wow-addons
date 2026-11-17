@@ -75,6 +75,21 @@ local function LevelColor(lv)
   return c and RGBTableToColorCode(c) or "|cffffffff"
 end
 
+-- The other faction's capitals (uiMapIDs) never make the list: same table three times, and not a place to fish.
+Guide.CAPITALS = { Alliance = { 1453, 1455, 1457 }, Horde = { 1454, 1456, 1458 } }
+local enemy
+local function EnemyCapitals()
+  if enemy then return enemy end
+  enemy = {}
+  local faction = UnitFactionGroup and UnitFactionGroup("player")
+  local other = faction == "Horde" and "Alliance" or faction == "Alliance" and "Horde" or nil
+  for _, id in ipairs(other and Guide.CAPITALS[other] or {}) do
+    local info = C_Map.GetMapInfo and C_Map.GetMapInfo(id)
+    if info and type(info.name) == "string" and not Secret(info.name) then enemy[info.name] = true end
+  end
+  return enemy
+end
+
 local function AreaName(id)
   local ok, n = pcall(C_Map.GetAreaInfo, id)
   if ok and type(n) == "string" and not Secret(n) and n ~= "" then return n end
@@ -85,20 +100,20 @@ function Guide.Rows(eff)
   local seed = ns.SEED
   if not (seed and seed.areas and C_Map and C_Map.GetAreaInfo) then return {} end
   local house = ns.Info.Houses()[1]
-  local lv, rows = Levels(), {}
+  local lv, rows, skip = Levels(), {}, EnemyCapitals()
   for id, a in pairs(seed.areas) do
     local zone = a.zone and seed.areas[a.zone]
     local base = a.base or (zone and zone.base)
     local name = AreaName(id)
     local hasMain = false
     for _, e in ipairs(a.loot or {}) do if e[3] == 1 then hasMain = true break end end
-    if base and name and hasMain then
+    local zoneName = a.zone and AreaName(a.zone)
+    if base and name and hasMain and not skip[name] and not (zoneName and skip[zoneName]) then
       local ev = 0
       for _, e in ipairs(a.loot) do
         local v = e[3] == 1 and not e[4] and ns.Info.Value(e[1])
         if v and v[house] then ev = ev + v[house] * e[2] / 100 end
       end
-      local zoneName = a.zone and AreaName(a.zone)
       local catch = Guide.Catch(eff, base)
       rows[#rows + 1] = { name = name, zoneName = zoneName, base = base, catch = catch, ev = ev, perCast = ev * catch,
         levels = lv[name] or (zoneName and lv[zoneName]) }

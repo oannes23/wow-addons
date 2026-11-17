@@ -23,6 +23,7 @@ Source: comments and code in `Camelot/` override folders, build 70790 [SRC]. Ful
 | Edit Mode | **Yes**, with Camelot presets | Yes | No | `Blizzard_EditMode/Camelot` |
 | Damage meter / Cooldown Manager | Built in | Built in | No | [SRC] |
 | Experience preset | `ForeverExperiencePreset`: Classic / Enhanced | — | — | GameRules docs |
+| Character names | **"Name Surname"** (separator: a space, `CHARACTERNAME_SURNAME_SEPARATOR`). `UnitName` returns the surname 2nd, and chat `playerName` (say/yell/channel arg 2) carries the full "Name Surname". API slug: `name-surname`. | Name-Realm | Name | LuaEnum 70938 [SRC]; chat and `GetGuildInfo("mouseover")` verified in game 2026-11-17 (Headcount) [INGAME] |
 | Housing, Delves, Plunderstorm code | Present in the tree but probably not loaded/used. **Don't target these.** | Yes | No | [INFER] |
 
 ## Implications

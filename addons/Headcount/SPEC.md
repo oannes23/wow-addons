@@ -28,7 +28,7 @@ Nothing here is combat data. Every unsafe case is "skip the name", never a branc
   - In-game full names are "Name Surname": `CHARACTERNAME_SURNAME_SEPARATOR` is a space (LuaEnum, 70938).
   - API slugs are `name-surname`, and the collector's `char_slug` accepts either separator.
   - A name with no surname can't be looked up and is dropped downstream.
-- **Unconfirmed:** whether chat `playerName` carries the surname [TODO-INGAME]. If it doesn't, chat seeds are useless and only nameplates, mouseover and `/who` count.
+- **Confirmed in game (2026-11-17):** chat `playerName` carries the surname, so chat senders are usable seeds.
 
 ## UX
 - `/headcount` prints one line: `Headcount: 1,234 names, 56 guilds noted · oldest 3d · pushed 2h ago`.
@@ -50,8 +50,8 @@ HeadcountDB = {
 - **No push handshake:** a running client overwrites its SavedVariables on logout, so the push script can't mark rows as sent. Re-sending is cheap (≤ 20k names) and the collector dedupes.
 
 ## Open questions / in-game verification
-- [ ] **Chat surname:** does `CHAT_MSG_CHANNEL` arg 2 include the surname ("Name Surname")? `/headcount` after a minute in Orgrimmar trade chat: the `ch` count should be above 0, and `/dump HeadcountDB.names` keys should have a space.
-- [ ] **Unit guild:** `GetGuildInfo("mouseover")` returns the guild name on Forever.
+- [x] **Chat surname** (verified 2026-11-17: first session gave 18 `ch` names, every one with a surname): does `CHAT_MSG_CHANNEL` arg 2 include the surname ("Name Surname")? `/headcount` after a minute in Orgrimmar trade chat: the `ch` count should be above 0, and `/dump HeadcountDB.names` keys should have a space.
+- [x] **Unit guild** (verified 2026-11-17: 12 guilds from mouseover, no `/who` run): `GetGuildInfo("mouseover")` returns the guild name on Forever.
 - [ ] **`/who` names:** a `/who 20-30` fills `who` rows with guilds (`fullName` includes the surname).
 
 ## Decisions

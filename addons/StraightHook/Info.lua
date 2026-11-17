@@ -64,7 +64,8 @@ end
 ----------------------------------------------------------------------------------------------------
 -- Skill
 ----------------------------------------------------------------------------------------------------
--- "Fishing 87/150 (+25)" or nil. GetProfessions/GetProfessionInfo exist on Forever (GlobalAPI); returns [TODO-INGAME].
+-- "Fishing 87/150 (+25)", effective skill (rank + modifier); nil when unknown.
+-- GetProfessions/GetProfessionInfo exist on Forever (GlobalAPI) and returned the fishing skill in game.
 function Info.Skill()
   if not (GetProfessions and GetProfessionInfo) then return nil end
   local ok, _, _, _, fishing = pcall(GetProfessions)
@@ -72,16 +73,68 @@ function Info.Skill()
   local ok2, name, _, rank, maxRank, _, _, _, mod = pcall(GetProfessionInfo, fishing)
   if not ok2 or type(rank) ~= "number" or Secret(rank) then return nil end
   local s = format("%s %d/%d", type(name) == "string" and name or PROFESSIONS_FISHING or "Fishing", rank, maxRank or 0)
-  if type(mod) == "number" and mod > 0 then s = s .. format(" (+%d)", mod) end
-  return s
+  mod = (type(mod) == "number" and not Secret(mod)) and mod or 0
+  if mod > 0 then s = s .. format(" (+%d)", mod) end
+  return s, rank + mod
+end
+
+----------------------------------------------------------------------------------------------------
+-- Classic prior (Data/Seed.lua, SPEC D-006): looked up by the client's own area names
+----------------------------------------------------------------------------------------------------
+local GETAWAY_MARGIN = 95 -- fish stop getting away at base + 95 (guides for Classic and Forever agree)
+local OWN_MIN = 10        -- loots at a spot before its own table leads
+local byName
+
+local function AreaIndex()
+  if byName then return byName end
+  byName = {}
+  local seed = ns.SEED
+  if not (seed and seed.areas and C_Map and C_Map.GetAreaInfo) then return byName end
+  for id, a in pairs(seed.areas) do
+    local ok, name = pcall(C_Map.GetAreaInfo, id)
+    if ok and type(name) == "string" and not Secret(name) and name ~= "" then
+      local cur = byName[name]
+      if not cur or (a.loot and not seed.areas[cur].loot) then byName[name] = id end
+    end
+  end
+  return byName
+end
+
+-- The prior for a zone/subzone: { area, base, loot } (subzone area first, then the zone), or nil.
+function Info.Prior(zone, sub)
+  local idx, areas = AreaIndex(), ns.SEED and ns.SEED.areas
+  if not areas then return nil end
+  local subID, zoneID = sub and sub ~= "" and idx[sub], zone and idx[zone]
+  local la = (subID and areas[subID].loot and subID) or (zoneID and areas[zoneID].loot and zoneID)
+  local ba = (subID and areas[subID].base and subID) or (zoneID and areas[zoneID].base and zoneID)
+  if not (la or ba) then return nil end
+  return { area = la or ba, base = ba and areas[ba].base, loot = la and areas[la].loot or {} }
+end
+
+-- Is `k` of `n` far from share `p`? Two-sided, ~1 % level: exact binomial for small n, normal approximation above.
+function Info.Differs(k, n, p)
+  if n < OWN_MIN or p <= 0 or p >= 1 then return false end
+  if n > 60 then return math.abs(k - n * p) / math.sqrt(n * p * (1 - p)) > 2.58 end
+  local pmf, lo, hi = (1 - p) ^ n, 0, 0
+  for i = 0, n do
+    if i <= k then lo = lo + pmf end
+    if i >= k then hi = hi + pmf end
+    pmf = pmf * (n - i) / (i + 1) * p / (1 - p)
+  end
+  return math.min(lo, hi) < 0.005
 end
 
 ----------------------------------------------------------------------------------------------------
 -- Lines
 ----------------------------------------------------------------------------------------------------
+local requested = {}
 local function Name(id)
   local n = ns.db.names[id]
   if not n and C_Item and C_Item.GetItemNameByID then n = C_Item.GetItemNameByID(id) end
+  if not n and not requested[id] and C_Item and C_Item.RequestLoadItemDataByID then
+    requested[id] = true
+    C_Item.RequestLoadItemDataByID(id) -- the name shows on the next refresh
+  end
   return n or ("item " .. id)
 end
 
@@ -118,7 +171,14 @@ function Info.Lines(key, opts)
   local s = key and ns.db.spots[key]
   local title = (s and s.zone or zone or "?") .. ((s and s.sub or sub or "") ~= "" and (" – " .. (s and s.sub or sub)) or "")
   out[#out + 1] = "|cff66ccffStraightHook|r  " .. title
-  local skill = Info.Skill()
+  local prior = Info.Prior(s and s.zone or zone, s and s.sub or sub)
+  local skill, eff = Info.Skill()
+  if prior and prior.base then
+    local clear = prior.base + GETAWAY_MARGIN
+    local warn = eff and eff < clear
+    skill = (skill and (skill .. " · ") or "") .. format(L["%sno getaways at %d%s"], warn and "|cffff6060" or "", clear,
+      warn and "|r" or "") .. L[" (Classic)"]
+  end
   if skill then out[#out + 1] = skill end
 
   local rows, total, stats, scope = ns.Log.Table(key)
@@ -127,21 +187,58 @@ function Info.Lines(key, opts)
     out[#out + 1] = format(L["%s: %d casts · %d caught · %d got away (%d%%) · %d missed"],
       scope == "zone" and L["Zone"] or L["Here"], stats.casts, stats.caught, stats.escaped, Pct(stats.escaped, hooked), stats.missed)
   end
+  -- Classic shares per item (group 1 = one item per catch) for comparison.
+  local pp = {}
+  for _, e in ipairs(prior and prior.loot or {}) do if e[3] == 1 and not e[4] then pp[e[1]] = e[2] / 100 end end
+  local loots = stats and stats.loots or 0
+  local top = opts.top or 8
+  local own = total > 0 and loots >= OWN_MIN and scope == "spot"
   if total > 0 then
     if scope == "zone" then out[#out + 1] = L["|cff999999(no catches at this spot yet: zone totals)|r"] end
+    if not own then out[#out + 1] = format(L["|cff999999Your catches (%d):|r"], loots) end
     for i, r in ipairs(rows) do
-      if i > (opts.top or 8) then break end
+      if i > top then break end
       local val = Info.Value(r.id)
       local price = val and HouseText(val) or ""
-      out[#out + 1] = format("%3d%%  %s (%d)%s", floor(r.share * 100 + 0.5), Name(r.id), r.units, price ~= "" and ("   " .. price) or "")
+      local cmp = ""
+      if pp[r.id] then
+        cmp = format(L[" · Classic %s%%"], (format("%.1f", pp[r.id] * 100):gsub("%.0$", "")))
+        if Info.Differs(math.min(r.units, loots), loots, pp[r.id]) then cmp = cmp .. " |cffffcc00≠|r" end
+      elseif prior and #prior.loot > 0 then
+        cmp = L[" · |cffffcc00not in Classic|r"]
+      end
+      out[#out + 1] = format("%3d%%  %s (%d)%s%s", floor(r.share * 100 + 0.5), Name(r.id), r.units, cmp,
+        price ~= "" and ("   " .. price) or "")
+    end
+    -- Classic items you should have seen by now but haven't.
+    for id, p in pairs(pp) do
+      if not stats.items[id] and Info.Differs(0, loots, p) then
+        out[#out + 1] = format(L["  0%%  %s · Classic %d%% |cffffcc00≠ (none in %d)|r"], Name(id), floor(p * 100 + 0.5), loots)
+      end
     end
     local v, cover = SetValue(stats.items)
-    if next(v) and stats.loots > 0 then
-      for h in pairs(v) do v[h] = v[h] / stats.loots end
+    if next(v) and loots > 0 then
+      for h in pairs(v) do v[h] = v[h] / loots end
       out[#out + 1] = L["≈ per catch: "] .. HouseText(v) .. (cover < 0.95 and format(L[" (%d%% priced)"], floor(cover * 100)) or "")
     end
   elseif not stats or (stats.casts or 0) == 0 then
     out[#out + 1] = L["|cff999999No catches logged here yet.|r"]
+  end
+  -- The Classic prior until this spot has enough of its own catches.
+  if prior and #prior.loot > 0 and not own then
+    out[#out + 1] = L["|cff999999Classic table (vanilla; Forever may differ):|r"]
+    local ev, n = {}, 0
+    for _, e in ipairs(prior.loot) do
+      local id, pct, group, kind = e[1], e[2], e[3], e[4]
+      local val = Info.Value(id)
+      if val and group == 1 and not kind then for h, c in pairs(val) do ev[h] = (ev[h] or 0) + c * pct / 100 end end
+      if n < top and pct >= 1 then
+        n = n + 1
+        out[#out + 1] = format("%3s%%  %s%s%s", (format("%.0f", pct)), Name(id), kind and (" |cff999999(" .. kind .. ")|r") or "",
+          val and ("   " .. HouseText(val)) or "")
+      end
+    end
+    if next(ev) then out[#out + 1] = L["≈ per catch (Classic table): "] .. HouseText(ev) end
   end
 
   local ses = ns.Log.session

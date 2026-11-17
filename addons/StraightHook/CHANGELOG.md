@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+- **A fishing guide out of the box.** Every zone now shows its vanilla catch table, with percentages, AH values and the expected value per catch, before you've caught anything there. It's labelled as Classic data: Forever may differ.
+- **Your catches take over.** After 10 catches at a spot, your own table leads, and each fish shows its Classic share next to yours. `≠` marks a real disagreement, and a Classic fish you have never caught is listed once the absence is significant (a fish missing from Forever, or a changed table).
+- **Getaway warning.** The skill line says at what skill fish stop getting away at this spot, red if you're below it.
+- Data: CMaNGOS classic-db (GPL-3.0), attribution in `reference/fishing/README.md`.
+
 ## 0.1.1
 - **Bite probe fixed.** It measured "before your click" a second late, so it only saw the click and the loot. It now uses the moment you interact, and keeps the last 10 casts' full event timelines for inspection. Run `/hook probe reset`, then `/hook probe on`, and fish again.
 

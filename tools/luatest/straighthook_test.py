@@ -251,7 +251,42 @@ def main() -> None:
     assert g.said("sound focus on") and g.said("spots logged")
     g.SlashCmdList.STRAIGHTHOOK("forget here")
     assert db.spots["1434:Booty Bay"] is None
+    seed_test()
     print("StraightHook harness: OK")
+
+
+def seed_test() -> None:
+    """Classic prior (SPEC D-006): lookup by the client's area names, skill threshold, prior table, divergence flags."""
+    rt, g, ns = runtime('''
+      C_Map.GetAreaInfo = function(id) return ({ [1637] = "Orgrimmar", [14] = "Durotar" })[id] end
+      ITEMNAMES = { [6289] = "Raw Longjaw Mud Snapper", [6308] = "Raw Bristle Whisker Catfish", [6291] = "Raw Brilliant Smallfish",
+                    [13755] = "Winter Squid" }
+      C_Item.GetItemNameByID = function(id) return ITEMNAMES[id] end
+      mapID, zoneText, subText = 1454, "Orgrimmar", "Valley of Honor"''')
+    ns.SEED = rt.eval('{ areas = { [1637] = { base = -20, loot = { {6289, 49.95, 1}, {6308, 30, 1}, {6291, 18, 1},'
+                      ' {13755, 10, 0, "seasonal"} } }, [14] = { base = -70, loot = { {6303, 98, 1} } } } }')
+    assert ns.Info.Differs(0, 15, 0.3) and not ns.Info.Differs(3, 15, 0.3) and not ns.Info.Differs(0, 5, 0.3)
+    assert ns.Info.Differs(10, 100, 0.3) and not ns.Info.Differs(28, 100, 0.3)
+    pr = ns.Info.Prior("Orgrimmar", "Valley of Honor")
+    assert pr.area == 1637 and pr.base == -20
+    text = "\n".join(ns.Info.Lines().values())
+    assert "Fishing 87/150 (+25) · no getaways at 75 (Classic)" in text, text
+    assert "Classic table (vanilla; Forever may differ)" in text and " 50%  Raw Longjaw Mud Snapper" in text, text
+    assert "Winter Squid |cff999999(seasonal)" in text
+    # 15 catches: 13 snapper, 2 smallfish, no catfish -> own table leads, catfish flagged.
+    for i in range(15):
+        g.cast(); g.stop()
+        item = "6291" if i < 2 else "6289"
+        g.catch(rt.eval('{ { link = "|Hitem:%s|h", name = ITEMNAMES[%s], qty = 1 } }' % (item, item)))
+        g.step(1.1)
+    text = "\n".join(ns.Info.Lines().values())
+    assert " 87%  Raw Longjaw Mud Snapper (13) · Classic 50% |cffffcc00≠" in text, text
+    assert "Raw Brilliant Smallfish (2) · Classic 18%" in text
+    assert "0%  Raw Bristle Whisker Catfish · Classic 30%" in text and "none in 15" in text, text
+    assert "Classic table" not in text  # own data leads now
+    g.subText, g.zoneText = "", "Durotar"
+    text = "\n".join(ns.Info.Lines().values())
+    assert "no getaways at 25" in text and "item 6303" in text, text
 
 
 if __name__ == "__main__":

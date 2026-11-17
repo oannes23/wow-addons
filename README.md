@@ -20,6 +20,7 @@ Knowledge base: [reference/README.md](reference/README.md). Agent instructions: 
 | [QuestTrackerSort](addons/QuestTrackerSort) | Sorts the Quests tracker by distance or level instead of newest-first | 1.0.0 |
 | [Wuwei](addons/Wuwei) | Surfaces AH plays (buy, sell, shuttle, hold) from an external market pipeline; needs a generated `Data/Plan.lua` | 0.1.0, in development, unreleased |
 | [ItemDataExport](addons/ItemDataExport) | Dev tool: resolves item and suffix tuples to names, stats and tooltip text in SavedVariables | 0.1.0, dev tool, unreleased |
+| [StraightHook](addons/StraightHook) | Fishing helper: sound focus so bites are heard (even alt-tabbed), learned catch table per spot with Horde/Blackwater AH value, session stats, bite-signal probe | 0.1.0, in development, unreleased |
 
 Offline tests (Lua 5.1 via lupa, mocked WoW API): `for t in tools/luatest/*_test.py; do uv run --no-project --with lupa python "$t"; done`
 

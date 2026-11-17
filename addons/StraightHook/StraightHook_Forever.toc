@@ -1,0 +1,16 @@
+## Interface: 16001
+## Title: StraightHook
+## Notes: Fishing helper: loud bites (sound focus), learned catch tables per spot with AH value, session stats
+## Author: oannes23
+## Version: 0.1.0
+## IconTexture: Interface\Icons\Trade_Fishing
+## SavedVariables: StraightHookDB
+## AddonCompartmentFunc: StraightHook_OnCompartmentClick
+
+Locales\enUS.lua
+Data\Prices.lua
+Sound.lua
+Log.lua
+Info.lua
+Probe.lua
+Core.lua

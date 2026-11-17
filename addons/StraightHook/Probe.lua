@@ -11,7 +11,10 @@ local GetTime, pairs, format = GetTime, pairs, string.format
 local PRE_FROM, PRE_TO = 2.5, 0.15
 local BASE_FROM, BASE_TO = 0.3, 1.5
 
-local frame, rec, t0
+local KEEP_TIMELINES = 10 -- casts kept verbatim in SavedVariables for inspection
+local TIMELINE_FROM = 12   -- s before the click
+
+local frame, rec, t0, stopAt, clickAt
 
 local function On() return ns.db and ns.db.probe and ns.db.probe.on end
 
@@ -19,20 +22,40 @@ function Probe.Start()
   if not On() then return end
   if not frame then
     frame = CreateFrame("Frame")
-    frame:SetScript("OnEvent", function(_, event) if rec then rec[#rec + 1] = { GetTime() - t0, event } end end)
+    frame:SetScript("OnEvent", function(_, event)
+      if not rec then return end
+      local t = GetTime() - t0
+      rec[#rec + 1] = { t, event }
+      -- The player's click: the interact fires just before the channel stops (seen in game 2026-11-17).
+      if event == "PLAYER_SOFT_TARGET_INTERACTION" and not clickAt then clickAt = t end
+    end)
   end
-  rec, t0 = {}, GetTime()
+  rec, t0, stopAt, clickAt = {}, GetTime(), nil, nil
   frame:RegisterAllEvents()
 end
 
--- outcome: "caught" | "escaped" | other (ignored). Called at the channel stop.
+-- The channel stopped (called at the stop itself; the verdict comes later with Stop).
+function Probe.MarkStop() if rec and not stopAt then stopAt = GetTime() - t0 end end
+
+-- outcome: "caught" | "escaped" | other (ignored). Called once the cast's outcome is known.
 function Probe.Stop(outcome)
   if frame then frame:UnregisterAllEvents() end
   if not rec then return end
-  local events, stop = rec, GetTime() - t0
+  local events = rec
+  local stop = math.min(clickAt or math.huge, stopAt or (GetTime() - t0))
   rec = nil
   if outcome ~= "caught" and outcome ~= "escaped" then return end
   local p = ns.db.probe
+  -- Verbatim timeline relative to the click, consecutive duplicates collapsed: what really happens before a bite.
+  local line, last = {}, nil
+  for _, e in ipairs(events) do
+    local dt = e[1] - stop
+    if dt >= -TIMELINE_FROM and dt <= 0.5 and e[2] ~= last then line[#line + 1] = format("%+.2f %s", dt, e[2]) end
+    last = e[2]
+  end
+  p.timelines = p.timelines or {}
+  table.insert(p.timelines, 1, { outcome = outcome, castAt = format("%+.2f", -stop), events = line })
+  while #p.timelines > KEEP_TIMELINES do table.remove(p.timelines) end
   local pre, base = {}, {}
   for _, e in ipairs(events) do
     local t, name = e[1], e[2]

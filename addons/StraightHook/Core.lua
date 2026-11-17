@@ -53,6 +53,7 @@ end
 local function OnCastStop()
   if not S.fishing then return end
   S.fishing = false
+  ns.Probe.MarkStop()
   local finish
   finish = function()
     if pending ~= finish then return end

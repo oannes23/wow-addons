@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.1
+- **Bite probe fixed.** It measured "before your click" a second late, so it only saw the click and the loot. It now uses the moment you interact, and keeps the last 10 casts' full event timelines for inspection. Run `/hook probe reset`, then `/hook probe on`, and fish again.
+
 ## 0.1.0
 - **Hear every bite.** While you fish, sound effects go to full and music, ambience and dialog go silent, and the game keeps playing sound when it is in the background (alt-tabbed). Everything is restored 8 s after you stop fishing, even after a crash or `/reload` mid-cast.
 - **What this spot gives.** Every catch is logged per spot (zone + subzone). A small panel appears while you fish (drag to move) showing:

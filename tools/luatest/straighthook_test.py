@@ -223,11 +223,17 @@ def main() -> None:
         g.cast()
         g.step(0.5); g.fire("BAG_UPDATE_DELAYED")         # baseline window
         g.step(4.0); g.fire("FAKE_BOBBER_SPLASH")          # the bite
-        g.step(0.6); g.stop()
+        g.step(0.5); g.fire("PLAYER_SOFT_TARGET_INTERACTION")  # the click
+        g.step(0.05); g.stop(); g.fire("LOOT_READY")
         g.catch(rt.eval('{ { link = "|Hitem:6303|h", name = "Raw Slitherskin Mackerel", qty = 1 } }'))
         g.step(1.1)
     rows, n = ns.Probe.Ranked()
     assert n == 3 and rows[1].name == "FAKE_BOBBER_SPLASH" and rows[1].pre == 1 and rows[1].base == 0, (rows[1].name, n)
+    names = [r.name for r in rows.values()]
+    assert "LOOT_READY" not in names and "UNIT_SPELLCAST_CHANNEL_STOP" not in names, names  # after the click: excluded
+    tl = db.probe.timelines[1]
+    evs = list(tl.events.values())
+    assert tl.outcome == "caught" and any(e.endswith("FAKE_BOBBER_SPLASH") and e.startswith("-0.5") for e in evs), evs
     g.printed = rt.table()
     g.SlashCmdList.STRAIGHTHOOK("probe report")
     assert g.said("FAKE_BOBBER_SPLASH") and g.said("100% /   0%")

@@ -99,3 +99,15 @@ StraightHookDB = {
 - D-004 (2026-11-17): **Outcomes per cast.**
   - Each cast ends in exactly one of caught, escaped or missed; early clicks are counted separately.
   - A cast ended by re-casting counts as missed. That's still the useful signal: "how many bites did I not react to".
+- D-005 (2026-11-17): **Probe v2: measure from the click, keep raw timelines.**
+  - **What went wrong:** the first in-game run (8 casts, Valley of Honor) took "the click" as the moment the verdict ran, 1 s after the channel stop. So the "before the click" window held the click and loot events themselves: `PLAYER_SOFT_TARGET_INTERACTION`, `UNIT_SPELLCAST_CHANNEL_STOP`, `LOOT_READY`, `LOOT_OPENED`, `UNIT_FLAGS`, and skill-ups. All scored 100 % vs 0 % baseline, which says nothing about the bite.
+  - **Now:** the click is the first `PLAYER_SOFT_TARGET_INTERACTION` or the channel stop, whichever is earlier. The last 10 casts' event timelines (−12 s … +0.5 s around the click) are kept verbatim in `probe.timelines`, so the bite window can be read by eye.
+
+## In-game results
+- 2026-11-17, Orgrimmar, Valley of Honor, 12 casts:
+  - **Outcomes:** 11 caught, 1 missed (an early click, spooked by Warchief's Blessing lightning).
+  - **Catches:** Raw Longjaw Mud Snapper 9, Raw Brilliant Smallfish 2.
+  - **Bobber:** the soft-interact GameObject has entry **35591** [INGAME].
+  - **Sound focus:** set and restored (`savedCVars` empty after the reload) [INGAME].
+  - **Side effect:** sound focus also makes other players' spell effects louder (Warchief's Blessing), since all spell sounds share one volume slider.
+

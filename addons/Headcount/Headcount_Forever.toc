@@ -1,0 +1,11 @@
+## Interface: 16001
+## Title: Headcount
+## Notes: Passively notes player names you see (nameplates, mouseover, public chat, /who) as census seeds for the private population sampler
+## Author: oannes23
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Misc_QuestionMark
+## SavedVariables: HeadcountDB
+## AddonCompartmentFunc: Headcount_OnCompartmentClick
+
+Locales\enUS.lua
+Core.lua

@@ -28,14 +28,19 @@ end
 
 -- The two-house price block (SPEC D-042 to D-046) as { left, right } rows, or nil. `data` is the tooltip data (stack
 -- count and the sell price line come from it); nil data = a bare item ID, one unit, no vendor flags.
+-- Below it, the uses block (vendor price, best use, crafts and disenchant per unit; Exits.lua, D-052).
 function Tooltip.PriceRows(id, data)
   local Prices = ns.Prices
   local mode = Prices.Mode()
-  if mode == "off" or not Prices.Get() then return nil end
+  if mode == "off" then return nil end
   local count, vendorUnit = Prices.Context(data)
   local house, _, confident = ns.House.Detect()
-  return Prices.Lines(id, { mode = mode, house = house, confident = confident, count = count, vendorUnit = vendorUnit,
-    now = GetServerTime() })
+  local rows = Prices.Get() and Prices.Lines(id, { mode = mode, house = house, confident = confident, count = count,
+    vendorUnit = vendorUnit, now = GetServerTime() }) or {}
+  local uses = ns.Exits and ns.USES and ns.Exits.Lines(id, { mode = mode, house = house, count = count,
+    ranks = ns.Exits.Ranks(), known = ns.Exits.Known, profName = ns.Exits.ProfName })
+  for _, r in ipairs(uses or {}) do rows[#rows + 1] = r end
+  return #rows > 0 and rows or nil
 end
 
 -- Post-call receives (tooltip, tooltipData); tooltipData.id is the item ID (cf. Blizzard TooltipUtil.lua). It runs after

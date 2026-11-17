@@ -70,7 +70,7 @@ loadReq = {}
 C_Item = { GetItemNameByID = function(id) return NAMES[id] end, RequestLoadItemDataByID = function(id) loadReq[#loadReq+1] = id end }
 """
 
-TOC_LUA = ["Locales/enUS.lua", "Data/Builtin.lua", "Data/Plan.lua", "Data/Prices.lua", "Plan.lua", "House.lua", "Prices.lua", "Ledger.lua", "Mail.lua", "Post.lua", "Tooltip.lua", "Panel.lua", "Steals.lua", "Keys.lua", "Core.lua"]
+TOC_LUA = ["Locales/enUS.lua", "Data/Builtin.lua", "Data/Plan.lua", "Data/Prices.lua", "Data/Uses.lua", "Plan.lua", "House.lua", "Prices.lua", "Exits.lua", "Ledger.lua", "Mail.lua", "Post.lua", "Tooltip.lua", "Panel.lua", "Steals.lua", "Keys.lua", "Core.lua"]
 
 
 def toc_files():
@@ -82,7 +82,7 @@ def strip_colors(s: str) -> str:
     return re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", s)
 
 
-GENERATED = ("Data/Plan.lua", "Data/Prices.lua")  # private pipeline output, gitignored; the client tolerates their absence
+GENERATED = ("Data/Plan.lua", "Data/Prices.lua", "Data/Uses.lua")  # private pipeline output, gitignored; the client tolerates their absence
 
 
 def boot(use_generated_plan: bool = False, extra: str = "", use_generated_prices: bool = False):
@@ -97,7 +97,7 @@ def boot(use_generated_plan: bool = False, extra: str = "", use_generated_prices
     assert files == TOC_LUA, files  # TOC order is what we test
     for f in files:
         p = ROOT / f
-        if (f == "Data/Plan.lua" and not use_generated_plan) or (f == "Data/Prices.lua" and not use_generated_prices):
+        if (f == "Data/Plan.lua" and not use_generated_plan) or (f in ("Data/Prices.lua", "Data/Uses.lua") and not use_generated_prices):
             continue
         if not p.exists():
             assert f in GENERATED, f"missing {f}"

@@ -17,6 +17,8 @@ addons/Wuwei/Data/Plan.lua
 
 # Wuwei price table, same source (wowf-ah-analysis export-addon)
 addons/Wuwei/Data/Prices.lua
+# Wuwei uses/transform table, same source (Wuwei SPEC D-052)
+addons/Wuwei/Data/Uses.lua
 
 # StraightHook fish prices, same source (wowf-ah-analysis export-addon)
 addons/StraightHook/Data/Prices.lua

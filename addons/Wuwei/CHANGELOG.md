@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0
+- **Uses block on item tooltips** (SPEC D-052). Under the price block, every item now shows:
+  - its **vendor price** per unit and for the stack;
+  - its **best use**: vendor it, keep it for the AH here, disenchant it, or craft it into something you can make;
+  - the gain per unit over just keeping or vendoring it.
+
+  Craft rows list the main recipes that use the item. Each reads like `Leatherworking 30 · Handstitched Leather Belt   vendor −22c · DE +23s`, meaning crafting the belt and vendoring it loses money, while disenchanting it gains.
+- **Values flow through the economy.** A recipe's output is valued at *its* best use, so a chain like ore → bar → shot or leather → cheap green → disenchant shows up on the raw material. The next step is named, e.g. `craft Crafted Heavy Shot`.
+- **Recipes only count when the item matters.** A recipe only counts when this item is at least a third of its input cost: two leather in a 670g sword don't make the leather worth 300g.
+- **Best use only counts crafts you can make**: a known recipe, or a trainer recipe within your skill. A bigger win behind a pattern or more skill shows as a grey `Upside` line.
+- Data comes from Blizzard's own Forever game tables (2,300 recipes and true vendor prices) plus your AH archive. Run `wowf-analysis export-addon`; the result stays private in `Data/Uses.lua`. `/wuwei prices short` keeps only the vendor and best-use rows.
+
 ## 0.5.0
 - **Steals work at Blackwater too** (SPEC D-050). The watchlist is now one list per house. At the Booty Bay AH the scan uses Blackwater's list and thresholds instead of refusing ("The steals list is for house 114"). At a house with no list you get "No steals list for house N." Plans from older exports still work: their one list is used as before.
 - **Resale hints.** When the plan says an item sells better at the other house, the chat alert, the panel row and the tooltip add `resell @Horde` (or `@Blackwater`). The gain shown is the expected take-home at the resale house (after the AH cut and expected deposit losses) minus the price, when the plan has it.

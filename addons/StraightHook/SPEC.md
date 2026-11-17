@@ -118,6 +118,19 @@ StraightHookDB = {
     - Forever adds zones (Zephras Isle) and items the seed lacks.
     - Own data leads and divergences are flagged instead of corrected. Small samples mislead: Orgrimmar gave 0 Bristle Whisker Catfish in the first 11 catches (2 % odds under Classic's 30 %), then 10 in 46 (22 %), which is consistent with Classic. That's why the flag needs significance at about 1 % and at least 10 catches.
 
+- D-007 (2026-11-17, owner request: "a small tooltip onto the Fishing ability that gives me a difficulty for my player level color coded like quests zone listing that overlaps with my fishing skill range for the best skillups and/or profitability"): **Where to fish, on the Fishing spell tooltip.**
+  - **Hook:** `TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Spell)`, matched by `C_Spell.GetSpellName(id) == PROFESSIONS_FISHING` (the same name test the cast detection uses). Turn it off with `/hook guide off`.
+  - **Catch chance:** `skill + bonuses − zone base + 5`, capped to 0–100 %. This is the emulator formula, and it reproduces the guides' "no getaways at base + 95" [INFER, Classic analog].
+  - **Skill-ups come from catches only, at a rate set by your skill** [CLASSIC-ANALOG; the Forever wiki says skilling works as in Classic]. So the best skill-up spot is any spot with no getaways.
+  - **Ranking:** expected AH value per cast = catch chance × the Classic table's value per catch at the first selected house. Two sections:
+    - "No getaways": catch 100 %, top 5 by value;
+    - "Stretch": catch 50–99 %, top 3.
+
+    Subzones with the same zone, base and value collapse into one row.
+  - **Colour:** the zone's `C_Map.GetMapLevels` range against your level, exactly as the world map's `AreaLabelDataProvider` does it (`GetQuestDifficultyColor`). uiMap zones are found under the top of your map tree and matched by name to `C_Map.GetAreaInfo`; a subzone uses its zone's range. `classic_fishing_areas.csv` adds each seed area's parent zone.
+  - **Values ignore thin asking prices.** An item with no recorded sales counts only if at least 10 units are listed, and then at min(floor, median). One unsold Old Wagonwheel at 2g made The Sludge Fen look like 20s per cast. This rule applies to the panel too.
+  - **What the real data says** (2026-11-17 prices): on the Horde AH, low-level fish are worth about 0.5s per cast anywhere, so at skill 100–225 the ranking mostly sorts by zone level. Profit fishing starts with schools and Forever's high-value fish, and the Classic tables don't know those.
+
 ## In-game results
 - 2026-11-17, probe v2 (0.2.0), Valley of Honor, 32 casts with 10 full timelines saved:
   - **No bite event.** In the seconds before the click, every timeline holds only background traffic: `CHAT_MSG_CHANNEL`/`CHAT_MSG_TRADESKILLS`, `SPELL_ACTIVATION_OVERLAY_HIDE` (also 10 of 32 in the baseline window), and aura/cooldown ticks. None of these appears consistently. With `RegisterAllEvents`, the bobber's splash reaches the client only as a sound and an animation [INGAME].

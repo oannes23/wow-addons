@@ -2,7 +2,7 @@
 ## Title: StraightHook
 ## Notes: Fishing helper: loud bites (sound focus), learned catch tables per spot with AH value, session stats
 ## Author: oannes23
-## Version: 0.2.0
+## Version: 0.3.0
 ## IconTexture: Interface\Icons\Trade_Fishing
 ## SavedVariables: StraightHookDB
 ## AddonCompartmentFunc: StraightHook_OnCompartmentClick
@@ -13,5 +13,6 @@ Data\Seed.lua
 Sound.lua
 Log.lua
 Info.lua
+Guide.lua
 Probe.lua
 Core.lua

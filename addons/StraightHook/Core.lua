@@ -3,7 +3,7 @@
 local addonName, ns = ...
 local L = ns.L
 
-local DEFAULTS = { version = 1, sound = true, panel = true, house = "both" }
+local DEFAULTS = { version = 1, sound = true, panel = true, house = "both", guide = true }
 local FINISH_DELAY = 1.0 -- s after the channel stops: loot or "got away" arrive just after
 
 ns.S = { fishing = false, bobberGUID = nil }
@@ -124,6 +124,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
     if event:find("^UNIT_") then frame:RegisterUnitEvent(event, "player") else frame:RegisterEvent(event) end
   end
   ns.Info.HookTooltip()
+  ns.Guide.HookTooltip()
 end)
 
 ----------------------------------------------------------------------------------------------------
@@ -134,7 +135,7 @@ local function Status()
   Say(format(L["sound focus %s · panel %s · values %s · probe %s · %d spots logged"], db.sound and "on" or "off",
     db.panel and "on" or "off", db.house == "both" and "Horde + Blackwater" or (ns.Info.HOUSE_NAME[tonumber(db.house)] or db.house),
     db.probe.on and "on" or "off", (function() local n = 0 for _ in pairs(db.spots) do n = n + 1 end return n end)()))
-  Say(L["/hook sound on|off · panel on|off|reset · house 114|117|both · probe on|off|report · forget here · show"])
+  Say(L["/hook sound on|off · panel on|off|reset · guide on|off · house 114|117|both · probe on|off|report · forget here · show"])
 end
 
 local function OnOff(arg, cur) if arg == "on" then return true elseif arg == "off" then return false end return not cur end
@@ -152,6 +153,9 @@ SlashCmdList.STRAIGHTHOOK = function(msg)
     db.panel = OnOff(arg, db.panel)
     if db.panel then ns.Info.Show() else ns.Info.Hide() end
     Say(L["panel "] .. (db.panel and "on" or "off"))
+  elseif cmd == "guide" then
+    db.guide = OnOff(arg, db.guide)
+    Say(L["fishing spell tooltip guide "] .. (db.guide and "on" or "off"))
   elseif cmd == "show" then
     for _, line in ipairs(ns.Info.Lines()) do print(line) end
   elseif cmd == "house" then

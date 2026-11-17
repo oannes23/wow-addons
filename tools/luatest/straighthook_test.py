@@ -15,7 +15,7 @@ from pathlib import Path
 import lupa.lua51 as lua51
 
 ROOT = Path(__file__).resolve().parents[2] / "addons" / "StraightHook"
-FILES = ["Locales/enUS.lua", "Sound.lua", "Log.lua", "Info.lua", "Probe.lua", "Core.lua"]
+FILES = ["Locales/enUS.lua", "Sound.lua", "Log.lua", "Info.lua", "Guide.lua", "Probe.lua", "Core.lua"]
 
 MOCK = r"""
 now = 100; printed = {}; timers = {}
@@ -86,10 +86,11 @@ function fire(e, ...) for _, f in ipairs(frames) do if (f.ev[e] or f.all) and f.
 SlashCmdList = {}
 -- Tooltips
 postCalls = {}
-Enum = { TooltipDataType = { Item = 0, Unit = 2, Object = 4 } }
+Enum = { TooltipDataType = { Item = 0, Spell = 1, Unit = 2, Object = 4 }, UIMapType = { Zone = 3 } }
 TooltipDataProcessor = { AddTooltipPostCall = function(t, fn) postCalls[t] = fn end }
 GameTooltip = { lines = {} }
 function GameTooltip:AddLine(t) self.lines[#self.lines+1] = t end
+function GameTooltip:AddDoubleLine(a, b) self.lines[#self.lines+1] = a .. " || " .. (b or "") end
 function tipHas(pat) for _, l in ipairs(GameTooltip.lines) do if l:find(pat, 1, true) then return true end end return false end
 -- Helpers
 function cast(id) fire("UNIT_SPELLCAST_CHANNEL_START", "player", "guid", id or 7620) end
@@ -171,8 +172,8 @@ def main() -> None:
                         ' [6303] = "27,35,5000,236,32,9,47440,0,2;24,25,303,32,,,,," } }')
     text = "\n".join(ns.Info.Lines().values())
     assert "Raw Glossy Mightfish (3)   H 2s 30c · B 7s 65c" in text, text
-    assert "Raw Slitherskin Mackerel (1)   H 32c · B 25c" in text, text
-    # per catch: H (3*230 + 1*32)/2 = 361c; B (3*765 + 1*25)/2 = 1160c
+    assert "Raw Slitherskin Mackerel (1)   H 32c · B 24c" in text, text  # no sales: min(floor, median)
+    # per catch: H (3*230 + 1*32)/2 = 361c; B (3*765 + 1*24)/2 = 1160c (rounded)
     assert "≈ per catch: H 3s 61c · B 11s 60c" in text, text
     g.SlashCmdList.STRAIGHTHOOK("house 117")
     text = "\n".join(ns.Info.Lines().values())
@@ -252,6 +253,7 @@ def main() -> None:
     g.SlashCmdList.STRAIGHTHOOK("forget here")
     assert db.spots["1434:Booty Bay"] is None
     seed_test()
+    guide_test()
     print("StraightHook harness: OK")
 
 
@@ -288,6 +290,60 @@ def seed_test() -> None:
     text = "\n".join(ns.Info.Lines().values())
     assert "no getaways at 25" in text and "item 6303" in text, text
 
+
+
+def guide_test() -> None:
+    """Fishing spell tooltip (SPEC D-007): catch formula, zones ranked by value per cast, level colours."""
+    rt, g, ns = runtime('''
+      AREAS = { [1637] = "Orgrimmar", [14] = "Durotar", [17] = "The Barrens", [33] = "Stranglethorn Vale",
+                [297] = "Jaguero Isle", [400] = "Thousand Needles" }
+      C_Map.GetAreaInfo = function(id) return AREAS[id] end
+      C_Map.GetMapInfo = function(id) if id == 1434 then return { parentMapID = 13 } end return { parentMapID = 0 } end
+      C_Map.GetMapChildrenInfo = function(id, t, all)
+        return { { mapID = 1, name = "Durotar" }, { mapID = 2, name = "The Barrens" }, { mapID = 3, name = "Stranglethorn Vale" },
+                 { mapID = 4, name = "Orgrimmar" } } end
+      LEVELS = { [1] = {1, 10}, [2] = {10, 25}, [3] = {30, 45}, [4] = {1, 60} }
+      C_Map.GetMapLevels = function(id) local l = LEVELS[id] if l then return l[1], l[2], 0, 0 end end
+      function UnitLevel() return 18 end
+      QuestDifficultyColors = { difficult = "yellow", trivial = "grey", standard = "green", verydifficult = "orange", impossible = "red" }
+      function GetQuestDifficultyColor(lv) local d = lv - 18
+        if d >= 5 then return "red" elseif d >= 3 then return "orange" elseif d >= -4 then return "yellow"
+        elseif d >= -10 then return "green" else return "grey" end end
+      function RGBTableToColorCode(c) return "<" .. c .. ">" end
+      function GetProfessionInfo(i) if i == 5 then return "Fishing", 136245, 87, 150, 0, 0, 356, 25 end end''')
+    ns.SEED = rt.eval('{ areas = {'
+        ' [1637] = { base = -20, loot = { {6289, 50, 1}, {6308, 30, 1}, {6291, 20, 1} } },'
+        ' [14] = { base = -70, loot = { {6303, 100, 1} } },'
+        ' [17] = { base = 55, loot = { {6308, 60, 1}, {6289, 40, 1} } },'
+        ' [33] = { base = 130, loot = { {8365, 60, 1}, {6308, 40, 1} } },'
+        ' [297] = { zone = 33, base = 205, loot = { {13755, 10, 0, "seasonal"} } },'
+        ' [400] = { base = 130 } } }')
+    ns.PRICES = rt.eval("{}")
+    vals = {6289: 10, 6308: 30, 6291: 5, 6303: 2, 8365: 100}
+    ns.Info.Value = rt.eval("function(t) return function(id) local v = t[id] if v then return { [114] = v, [117] = v } end end end")(
+        rt.table_from(vals))
+    assert ns.Guide.Catch(112, -70) == 1 and ns.Guide.Catch(112, 55) == 0.62 and ns.Guide.Catch(1, 130) == 0
+    lines = ns.Guide.Lines()
+    rows = [f"{l[1]} | {l[2]}" for l in lines.values()]
+    text = "\n".join(rows)
+    assert "StraightHook: where to fish|r | skill 112" in text, text
+    # Clean (catch 100 %): Orgrimmar 0.5*10+0.3*30+0.2*5 = 15c/cast beats Durotar 2c; colours by level vs 18.
+    clean = [r for r in rows if "/cast" in r and "%" not in r.split("|")[-1]]
+    assert clean[0].startswith("<green>Orgrimmar 1–60") or clean[0].startswith("<yellow>Orgrimmar"), clean
+    assert "15c/cast" in clean[0] and "<green>Durotar 1–10|r | 2c/cast" in clean[1], clean
+    # Stretch: Barrens 62 % x (0.6*30+0.4*10 = 22c) = 13.6c -> 14c; STV 0 % excluded; Jaguero (seasonal only) skipped.
+    assert any(r.startswith("<yellow>The Barrens 10–25|r | 62% · 14c/cast") for r in rows), text
+    assert "Stranglethorn" not in text and "Jaguero" not in text and "Thousand Needles" not in text
+    # The hook only fires for Fishing, and respects /hook guide off.
+    g.GameTooltip.lines = rt.table()
+    g.postCalls[1](g.GameTooltip, rt.eval("{ id = 133 }"))
+    assert len(g.GameTooltip.lines) == 0
+    g.postCalls[1](g.GameTooltip, rt.eval("{ id = 7620 }"))
+    assert g.tipHas("where to fish") and g.tipHas("The Barrens")
+    g.SlashCmdList.STRAIGHTHOOK("guide off")
+    g.GameTooltip.lines = rt.table()
+    g.postCalls[1](g.GameTooltip, rt.eval("{ id = 7620 }"))
+    assert len(g.GameTooltip.lines) == 0
 
 if __name__ == "__main__":
     main()

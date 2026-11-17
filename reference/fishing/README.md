@@ -5,6 +5,7 @@ Vanilla (1.12) fishing loot tables and zone fishing levels, used by StraightHook
 | File | Columns | Meaning |
 |---|---|---|
 | `classic_fishing_loot.csv` | area_id, item_id, pct, group, kind | `group` 1: exactly one item per catch, `pct` is its share (explicit chances, with chance-0 rows splitting the remainder equally). `group` 0: rolled independently at `pct`. `kind`: `seasonal` (Winter Squid / Raw Summer Bass, gated by a seasonal event, 10 %), `quest` (only drops on the quest) |
+| `classic_fishing_areas.csv` | area_id, zone_id | Each seed area's parent zone, from a Classic Era 1.15.9 AreaTable export (wago.tools); a subzone without its own base level uses its zone's |
 | `classic_fishing_skill.csv` | area_id, base | The area's base fishing level (negative for starter zones). Guides for Forever and Classic agree that fish stop getting away at **base + 95** (Durotar −70 → 25, Stranglethorn 130 → 225) [INFER, guide-consistent] |
 
 - **Lookup:** by AreaTable ID. Subzones without rows use their zone. Names aren't stored: the addon resolves them in game with `C_Map.GetAreaInfo(areaID)`.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0
+- **Where to fish, on the Fishing spell's tooltip.** Hover the Fishing ability (spellbook or action bar) to see:
+  - the best zones where nothing gets away at your skill (bonuses included);
+  - three "stretch" zones with their catch chance;
+  - each zone's AH value per cast.
+
+  Zone names are coloured by level against yours, like the world map. Skill-ups come only from catches, so any zone in the first list is a full-speed skill-up spot. `/hook guide off` hides it.
+- **More honest values.** An item that has never sold counts only when it's listed in depth (10+ units), at its cheaper asking price. A lone overpriced listing no longer inflates a zone or a catch.
+
 ## 0.2.0
 - **A fishing guide out of the box.** Every zone now shows its vanilla catch table, with percentages, AH values and the expected value per catch, before you've caught anything there. It's labelled as Classic data: Forever may differ.
 - **Your catches take over.** After 10 catches at a spot, your own table leads, and each fish shows its Classic share next to yours. `≠` marks a real disagreement, and a Classic fish you have never caught is listed once the absence is significant (a fish missing from Forever, or a changed table).

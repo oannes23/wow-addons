@@ -13,6 +13,7 @@ local HOUSE_NAME = { [114] = "Horde", [117] = "Blackwater" }
 -- Prices (Data/Prices.lua, generated; same part format as Wuwei D-043)
 ----------------------------------------------------------------------------------------------------
 local FIELDS = { "floor", "median", "units", "cheap", "sells", "n", "perDay10", "trend", "sellsDays" }
+local THIN_UNITS = 10 -- fewer units listed than this, and no sales: no value
 local cache, cacheOf = {}, nil
 
 -- Typical value of one unit of `id` per house: { [114] = copper, [117] = copper } or nil.
@@ -32,7 +33,10 @@ function Info.Value(id)
         k = k + 1
         if FIELDS[k] then d[FIELDS[k]] = tonumber(v) end
       end
-      local v = d.sells or d.median or d.floor
+      -- Sale median when there are sales. Otherwise the cheaper of floor/median, and only if the item is listed
+      -- in depth: one unsold listing at 2g (Old Wagonwheel, 2026-11-17) is an asking price, not a value (D-007).
+      local ask = d.floor and d.median and math.min(d.floor, d.median) or d.floor or d.median
+      local v = d.sells or ((d.units or 0) >= THIN_UNITS and ask) or nil
       if h and v then out = out or {} out[h] = v end
     end
   end
@@ -105,7 +109,10 @@ function Info.Prior(zone, sub)
   local idx, areas = AreaIndex(), ns.SEED and ns.SEED.areas
   if not areas then return nil end
   local subID, zoneID = sub and sub ~= "" and idx[sub], zone and idx[zone]
-  local la = (subID and areas[subID].loot and subID) or (zoneID and areas[zoneID].loot and zoneID)
+  local function Main(id) -- has a main table (group 1), not only seasonal or quest extras
+    for _, e in ipairs(id and areas[id].loot or {}) do if e[3] == 1 then return id end end
+  end
+  local la = Main(subID) or Main(zoneID)
   local ba = (subID and areas[subID].base and subID) or (zoneID and areas[zoneID].base and zoneID)
   if not (la or ba) then return nil end
   return { area = la or ba, base = ba and areas[ba].base, loot = la and areas[la].loot or {} }

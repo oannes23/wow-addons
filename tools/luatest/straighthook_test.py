@@ -254,6 +254,7 @@ def main() -> None:
     assert db.spots["1434:Booty Bay"] is None
     seed_test()
     guide_test()
+    guide_forever_levels_test()
     print("StraightHook harness: OK")
 
 
@@ -344,6 +345,28 @@ def guide_test() -> None:
     g.GameTooltip.lines = rt.table()
     g.postCalls[1](g.GameTooltip, rt.eval("{ id = 7620 }"))
     assert len(g.GameTooltip.lines) == 0
+
+def guide_forever_levels_test() -> None:
+    """Forever: GetMapLevels has no data (zone ContentTuningID 0), so ranges come from Guide.ZONE_LEVELS by uiMapID."""
+    rt, g, ns = runtime('''
+      AREAS = { [14] = "Durotar", [17] = "The Barrens" }
+      MAPS = { [1411] = "Durotar", [1413] = "The Barrens" }
+      C_Map.GetAreaInfo = function(id) return AREAS[id] end
+      C_Map.GetMapInfo = function(id) return { parentMapID = 0, name = MAPS[id] } end
+      C_Map.GetMapChildrenInfo = function() return { { mapID = 1411, name = "Durotar" }, { mapID = 1413, name = "The Barrens" } } end
+      C_Map.GetMapLevels = function() return 0, 0, 0, 0 end
+      function UnitLevel() return 18 end
+      QuestDifficultyColors = { difficult = "yellow" }
+      function GetQuestDifficultyColor(lv) local d = lv - 18
+        if d >= -4 then return "yellow" elseif d >= -10 then return "green" else return "grey" end end
+      function RGBTableToColorCode(c) return "<" .. c .. ">" end
+      function GetProfessionInfo(i) if i == 5 then return "Fishing", 136245, 87, 150, 0, 0, 356, 25 end end''')
+    ns.SEED = rt.eval('{ areas = { [14] = { base = -70, loot = { {6303, 100, 1} } }, [17] = { base = 55, loot = { {6308, 100, 1} } } } }')
+    ns.PRICES = rt.eval("{}")
+    ns.Info.Value = rt.eval("function(id) return { [114] = 10, [117] = 10 } end")
+    text = "\n".join(f"{l[1]} | {l[2]}" for l in ns.Guide.Lines().values())
+    assert "<green>Durotar 1–10|r" in text and "<yellow>The Barrens 10–25|r" in text, text
+
 
 if __name__ == "__main__":
     main()

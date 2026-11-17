@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.1
+- **Fix: zone names in the Fishing tooltip had no level colour or range** (SPEC D-008). Forever's client has no zone level data, so the game's map API returns nothing. StraightHook now carries the Vanilla zone ranges itself (Durotar 1–10, The Barrens 10–25, …) and colours them the way the world map would. Cities and Forever's new zones stay uncoloured.
+
 ## 0.3.0
 - **Where to fish, on the Fishing spell's tooltip.** Hover the Fishing ability (spellbook or action bar) to see:
   - the best zones where nothing gets away at your skill (bonuses included);

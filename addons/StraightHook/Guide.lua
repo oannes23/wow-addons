@@ -16,7 +16,22 @@ function Guide.Catch(eff, base) return max(0, min(100, eff - base + 5)) / 100 en
 
 local function Secret(v) return issecretvalue and issecretvalue(v) end
 
--- uiMap zone name -> { minLevel, maxLevel }. Built once from the top of the player's map tree.
+-- Vanilla zone level ranges by uiMapID, the Classic world map's own ranges [WIKI]. Forever's client tables leave every
+-- zone's ContentTuningID at 0 (UiMap and AreaTable, wowf build 1.60.1.70938), so C_Map.GetMapLevels has nothing to
+-- return there and the map shows no ranges (SPEC D-008). The API still wins when it answers. Cities and Forever's new
+-- zones (Mount Hyjal, Riverglades, Zephras Isle, Shen'dralas) have no entry.
+Guide.ZONE_LEVELS = {
+  [1411] = { 1, 10 }, [1412] = { 1, 10 }, [1438] = { 1, 10 }, [1429] = { 1, 10 }, [1426] = { 1, 10 }, [1420] = { 1, 10 },
+  [1439] = { 10, 20 }, [1413] = { 10, 25 }, [1432] = { 10, 20 }, [1421] = { 10, 20 }, [1436] = { 10, 20 },
+  [1433] = { 15, 25 }, [1442] = { 15, 27 }, [1440] = { 18, 30 }, [1431] = { 18, 30 }, [1424] = { 20, 30 },
+  [1437] = { 20, 30 }, [1441] = { 25, 35 }, [1416] = { 30, 40 }, [1417] = { 30, 40 }, [1443] = { 30, 40 },
+  [1434] = { 30, 45 }, [1418] = { 35, 45 }, [1435] = { 35, 45 }, [1445] = { 35, 45 }, [1425] = { 40, 50 },
+  [1444] = { 40, 50 }, [1446] = { 40, 50 }, [1427] = { 43, 50 }, [1447] = { 45, 55 }, [1419] = { 45, 55 },
+  [1448] = { 48, 55 }, [1449] = { 48, 55 }, [1428] = { 50, 58 }, [1422] = { 51, 58 }, [1423] = { 53, 60 },
+  [1430] = { 55, 60 }, [1451] = { 55, 60 }, [1452] = { 55, 60 },
+}
+
+-- uiMap zone name -> { minLevel, maxLevel }: C_Map.GetMapLevels over the player's map tree, then the table above.
 local levels
 local function Levels()
   if levels then return levels end
@@ -36,6 +51,11 @@ local function Levels()
   for _, k in ipairs(ok and type(kids) == "table" and kids or {}) do
     local lo, hi = C_Map.GetMapLevels(k.mapID)
     if k.name and lo and hi and lo > 0 and hi > 0 and not levels[k.name] then levels[k.name] = { lo, hi } end
+  end
+  for id, lv in pairs(Guide.ZONE_LEVELS) do
+    local info = C_Map.GetMapInfo(id)
+    local name = info and info.name
+    if type(name) == "string" and not Secret(name) and not levels[name] then levels[name] = lv end
   end
   return levels
 end

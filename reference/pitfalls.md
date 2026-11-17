@@ -74,3 +74,8 @@ Wuwei's ledger assumed each owned auction is one row and that `AUCTION_CANCELED`
 - Symptom: `for q in "fn UnitHealth" ...; do uv run ... tools/wowapi.py $q; done` printed the usage text for every query, with no error. A subagent concluded the tool was broken and read the API docs by hand instead.
 - Cause: zsh does not word-split unquoted `$q`, so the tool got one argument (`"fn UnitHealth"`) and fell through to usage.
 - Rule: in zsh write `${=q}` (or call the tool once per query). If the tool prints usage, check the argv before assuming it is broken.
+
+## P-016 · Zone level ranges are empty on Forever: `C_Map.GetMapLevels` has no data (2026-11-17)
+- Symptom: StraightHook's zone colours (copied from the world map's `AreaLabelDataProvider`) never showed; every zone was white with no "N–M" range.
+- Cause: Forever's client tables set `ContentTuningID = 0` on every zone in UiMap and AreaTable [SRC: wago.tools DB2, wowf 1.60.1.70938]. The map's level ranges come from that tuning, so `GetMapLevels` returns nothing usable [INFER; TODO-INGAME `/dump C_Map.GetMapLevels(1411)`]. Classic Era's client has no zone tuning either.
+- Fix: ship the Vanilla ranges keyed by uiMapID (`StraightHook/Guide.lua` `Guide.ZONE_LEVELS`) and let the API override when it answers. Forever's new zones (Mount Hyjal 2482, Zephras Isle 2521/2665, Riverglades 2548, Shen'dralas 2652) have no known range.

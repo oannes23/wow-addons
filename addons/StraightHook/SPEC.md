@@ -125,6 +125,10 @@ StraightHookDB = {
   - **Ranking:** expected AH value per cast = catch chance × the Classic table's value per catch at the first selected house. Two sections:
     - "No getaways": catch 100 %, top 5 by value;
     - "Stretch": catch 50–99 %, top 3.
+- D-008 (2026-11-17, owner report: "I'm not seeing zone name colored difficult"): **Zone level ranges come from a built-in Vanilla table.**
+  - **Cause:** Forever's client tables leave every zone's ContentTuningID at 0 [SRC: wago.tools DB2 for wowf build 1.60.1.70938; UiMap and AreaTable for Durotar, The Barrens, Stranglethorn Vale, Tanaris and more]. `C_Map.GetMapLevels` reads that tuning, so it has nothing to return [INFER; TODO-INGAME `/dump C_Map.GetMapLevels(1411)`]. Every row fell back to white with no range. The Classic Era client has no zone tuning either.
+  - **Fix:** `Guide.ZONE_LEVELS` holds the Classic world map's ranges keyed by uiMapID, so it works in any client language. Names come from `C_Map.GetMapInfo(id).name`, and the API still wins when it returns levels.
+  - **Gaps:** cities and Forever's new zones (Mount Hyjal, Riverglades, Zephras Isle, Shen'dralas) have no range and stay white.
 
     Subzones with the same zone, base and value collapse into one row.
   - **Colour:** the zone's `C_Map.GetMapLevels` range against your level, exactly as the world map's `AreaLabelDataProvider` does it (`GetQuestDifficultyColor`). uiMap zones are found under the top of your map tree and matched by name to `C_Map.GetAreaInfo`; a subzone uses its zone's range. `classic_fishing_areas.csv` adds each seed area's parent zone.

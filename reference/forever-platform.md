@@ -47,3 +47,12 @@ Confidence key: **[SRC]** read directly in the local Blizzard source · **[WIKI]
 - https://warcraft.wiki.gg/wiki/TOC_format
 - https://en.wikipedia.org/wiki/World_of_Warcraft:_Forever
 - https://wowclassicforever.info/news/addons-api/ (aggregates the Blizzard UI Discord statement, 2026-09-16)
+
+## Fishing
+| Fact | Value | Confidence |
+|---|---|---|
+| Bite signal | **None visible to addons.** `RegisterAllEvents` over 10 caught casts (Orgrimmar, 1.60.1) shows nothing consistent in the seconds before the player's click; the bite is only a sound and a bobber animation. A "bite ping" can only amplify the game's own splash (CVar sound focus); it can't be timed. | [INGAME 2026-11-17] StraightHook SPEC D-002/D-005 |
+| Bobber | The soft-interact target while fishing is a GameObject GUID with entry **35591** (`PLAYER_SOFT_INTERACT_CHANGED`). | [INGAME 2026-11-17] |
+| Click sequence | `PLAYER_SOFT_TARGET_INTERACTION` at the press → `UNIT_SPELLCAST_CHANNEL_STOP` + `LOOT_READY` about 0.2 s later → `LOOT_OPENED` about 0.47 s; `IsFishingLoot()` true. | [INGAME 2026-11-17] |
+| Loot tables | Orgrimmar (Valley of Honor) matches the vanilla table within noise after 78 catches. Classic priors live in `reference/fishing/`. | [INGAME] |
+

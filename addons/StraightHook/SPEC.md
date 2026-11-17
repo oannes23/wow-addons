@@ -91,7 +91,7 @@ StraightHookDB = {
 - D-002 (2026-11-17): **Sound focus instead of a bite ping, for now.**
   - The API has no bite event, so a ping can't be timed.
   - Muting competing channels and maximising SFX makes the game's own splash the loudest thing, which is what fishing addons have done since Classic [ANALOG].
-  - The probe (scope 4) is the experiment that could unlock a true ping.
+  - The probe (scope 4) was the experiment that could have unlocked a true ping. **Closed 2026-11-17: no addon-visible event marks the bite** [INGAME], see In-game results. The sound focus stays the mechanism. `/hook probe` stays for re-testing after a patch.
   - What breaks if taken literally: if the player changes a volume slider mid-fishing, the restore puts back the pre-fishing value.
 - D-003 (2026-11-17): **Learned loot tables only.**
   - Tables are per map + subzone, from the player's own catches.
@@ -119,6 +119,10 @@ StraightHookDB = {
     - Own data leads and divergences are flagged instead of corrected. Small samples mislead: Orgrimmar gave 0 Bristle Whisker Catfish in the first 11 catches (2 % odds under Classic's 30 %), then 10 in 46 (22 %), which is consistent with Classic. That's why the flag needs significance at about 1 % and at least 10 catches.
 
 ## In-game results
+- 2026-11-17, probe v2 (0.2.0), Valley of Honor, 32 casts with 10 full timelines saved:
+  - **No bite event.** In the seconds before the click, every timeline holds only background traffic: `CHAT_MSG_CHANNEL`/`CHAT_MSG_TRADESKILLS`, `SPELL_ACTIVATION_OVERLAY_HIDE` (also 10 of 32 in the baseline window), and aura/cooldown ticks. None of these appears consistently. With `RegisterAllEvents`, the bobber's splash reaches the client only as a sound and an animation [INGAME].
+  - **The click sequence** (times from the press): `PLAYER_SOFT_TARGET_INTERACTION` at 0, `UNIT_SPELLCAST_CHANNEL_STOP` and `LOOT_READY` at +0.13–0.23 s (the server round trip), `LOOT_OPENED` at about +0.47 s.
+  - **Running catch total:** 78 catches. Snapper 46 (59 %), Catfish 16 (21 %), Smallfish 15 (19 %), and one 22 Pound Catfish (a 0.06 % rare in Classic). Still within noise of Classic. 82 casts, 4 misses, 0 getaways.
 - 2026-11-17, Valley of Honor, 46 catches (one 10-minute lure):
   - **Catches:** Longjaw Mud Snapper 27 (59 %), Bristle Whisker Catfish 10 (22 %), Brilliant Smallfish 9 (20 %).
   - **Classic table:** 50 / 30 / 18 %. None of the three differs significantly.

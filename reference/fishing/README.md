@@ -1,6 +1,6 @@
 # Classic fishing priors (StraightHook seed data)
 
-Vanilla (1.12) fishing loot tables and zone fishing levels, used by StraightHook as a **prior** until the player's own catches at a spot take over (StraightHook SPEC D-006). Forever may differ: Zephras Isle and Forever-only items are missing, and the first spot compared (Orgrimmar) already disagrees on Bristle Whisker Catfish.
+Vanilla (1.12) fishing loot tables and zone fishing levels, used by StraightHook as a **prior** until the player's own catches at a spot take over (StraightHook SPEC D-006). Forever may differ: Zephras Isle and Forever-only items are missing, and the first spot compared (Orgrimmar, Valley of Honor, 46 catches on 2026-11-17) matched Classic's shares within noise.
 
 | File | Columns | Meaning |
 |---|---|---|

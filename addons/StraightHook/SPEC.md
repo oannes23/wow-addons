@@ -116,9 +116,14 @@ StraightHookDB = {
   - **Breaks if taken literally:**
     - It is the emulator's reconstruction of 1.12, not Blizzard data.
     - Forever adds zones (Zephras Isle) and items the seed lacks.
-    - The first comparison (Orgrimmar, 0 Bristle Whisker Catfish in 11 catches where Classic says 30 %) already hints at differences. That is why own data leads and divergences are flagged instead of corrected.
+    - Own data leads and divergences are flagged instead of corrected. Small samples mislead: Orgrimmar gave 0 Bristle Whisker Catfish in the first 11 catches (2 % odds under Classic's 30 %), then 10 in 46 (22 %), which is consistent with Classic. That's why the flag needs significance at about 1 % and at least 10 catches.
 
 ## In-game results
+- 2026-11-17, Valley of Honor, 46 catches (one 10-minute lure):
+  - **Catches:** Longjaw Mud Snapper 27 (59 %), Bristle Whisker Catfish 10 (22 %), Brilliant Smallfish 9 (20 %).
+  - **Classic table:** 50 / 30 / 18 %. None of the three differs significantly.
+  - **Value:** about 23c per catch on Horde, 26c on Blackwater, at the sale prices of the day.
+  - **Probe:** this session still ran 0.1.0, so its aggregates use the broken window and no timelines were saved.
 - 2026-11-17, Orgrimmar, Valley of Honor, 12 casts:
   - **Outcomes:** 11 caught, 1 missed (an early click, spooked by Warchief's Blessing lightning).
   - **Catches:** Raw Longjaw Mud Snapper 9, Raw Brilliant Smallfish 2.

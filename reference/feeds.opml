@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>WoW: Forever news feeds (verified 2026-11-17)</title></head>
+  <body>
+    <outline text="WoW Forever: DATA">
+      <outline type="rss" text="wow-ui-source forever commits" title="wow-ui-source forever commits" xmlUrl="https://github.com/Gethe/wow-ui-source/commits/forever.atom" htmlUrl="https://github.com/Gethe/wow-ui-source/tree/forever"/>
+      <outline type="rss" text="wow-ui-source tags" title="wow-ui-source tags" xmlUrl="https://github.com/Gethe/wow-ui-source/tags.atom" htmlUrl="https://github.com/Gethe/wow-ui-source/tags"/>
+      <outline type="rss" text="BlizzardInterfaceResources forever commits" title="BlizzardInterfaceResources forever commits" xmlUrl="https://github.com/Ketho/BlizzardInterfaceResources/commits/forever.atom" htmlUrl="https://github.com/Ketho/BlizzardInterfaceResources/tree/forever"/>
+    </outline>
+    <outline text="WoW Forever: OFFICIAL">
+      <outline type="rss" text="Blizzard forums WoW: Forever (US)" title="Blizzard forums WoW: Forever (US)" xmlUrl="https://us.forums.blizzard.com/en/wow/c/wow-forever/346.rss" htmlUrl="https://us.forums.blizzard.com/en/wow/c/wow-forever/346"/>
+      <outline type="rss" text="Blizzard forums WoW: Forever (EU)" title="Blizzard forums WoW: Forever (EU)" xmlUrl="https://eu.forums.blizzard.com/en/wow/c/wow-forever/359.rss" htmlUrl="https://eu.forums.blizzard.com/en/wow/c/wow-forever/359"/>
+    </outline>
+    <outline text="WoW Forever: PRESS">
+      <outline type="rss" text="Warcraft Tavern Forever" title="Warcraft Tavern Forever" xmlUrl="https://www.warcrafttavern.com/forever/feed/" htmlUrl="https://www.warcrafttavern.com/forever/news/"/>
+      <outline type="rss" text="MeinMMO EN (filter: forever)" title="MeinMMO EN (filter: forever)" xmlUrl="https://mein-mmo.de/en/feed" htmlUrl="https://mein-mmo.de/en/"/>
+    </outline>
+    <outline text="WoW Forever: COMMUNITY">
+      <outline type="rss" text="warcraft.wiki.gg Patch 1.60.1 API changes history" title="warcraft.wiki.gg Patch 1.60.1 API changes history" xmlUrl="https://warcraft.wiki.gg/index.php?title=Patch_1.60.1/API_changes&amp;action=history&amp;feed=atom" htmlUrl="https://warcraft.wiki.gg/wiki/Patch_1.60.1/API_changes"/>
+      <outline type="rss" text="warcraft.wiki.gg World of Warcraft: Forever page history" title="warcraft.wiki.gg World of Warcraft: Forever page history" xmlUrl="https://warcraft.wiki.gg/index.php?title=World_of_Warcraft:_Forever&amp;action=history&amp;feed=atom" htmlUrl="https://warcraft.wiki.gg/wiki/World_of_Warcraft:_Forever"/>
+      <outline type="rss" text="warcraft.wiki.gg recent changes (noisy)" title="warcraft.wiki.gg recent changes (noisy)" xmlUrl="https://warcraft.wiki.gg/index.php?title=Special:RecentChanges&amp;feed=atom&amp;days=7&amp;limit=50" htmlUrl="https://warcraft.wiki.gg/wiki/Special:RecentChanges"/>
+    </outline>
+  </body>
+</opml>

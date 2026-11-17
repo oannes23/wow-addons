@@ -32,3 +32,4 @@ Target: **World of Warcraft: Forever** (codename Camelot, `WOW_PROJECT_ID` 18, c
 | [TODO-INGAME] | Needs a `/dump` or in-game test | Unknown |
 
 After each Forever patch, run `scripts/sync-reference.sh`, diff `tools/wowapi.py flags`, and re-verify the [SRC] claims whose files changed.
+- [news-sources.md](news-sources.md): feeds for Forever announcements, hotfixes and builds (patch-day trigger: TACT `wowf` versions); `feeds.opml` for an RSS reader.

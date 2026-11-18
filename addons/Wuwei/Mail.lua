@@ -3,7 +3,8 @@
 -- never takes money or items, never deletes.
 local _, ns = ...
 
-local floor, abs, ipairs, pairs, pcall, tonumber = math.floor, math.abs, ipairs, pairs, pcall, tonumber
+local floor, abs, min, sort, ipairs, pairs, pcall, tonumber =
+  math.floor, math.abs, math.min, table.sort, ipairs, pairs, pcall, tonumber
 
 local Mail = {}
 ns.Mail = Mail
@@ -11,6 +12,7 @@ ns.Mail = Mail
 Mail.MAX_DAYS = 30            -- AH mail lifetime: arrival is estimated as now - (MAX_DAYS - daysLeft) days
 Mail.MATCH_SLACK = 600        -- s: the same mail seen again has its estimated arrival within this window
 Mail.KEEP = 31 * 86400        -- s: dedupe records older than this are pruned
+Mail.MAX_DRIFT = 6 * 3600     -- s: a mail still in the inbox may read this far from its first estimate (D-053)
 
 local function State()
   local st = ns.db.ledgerState
@@ -157,8 +159,18 @@ local function Enrich(at, k, r)
   end
 end
 
--- Scan the open inbox; record each auction mail once (multiset match on fields + estimated arrival).
-function Mail.Scan()
+-- Scan the open inbox; record each auction mail once (D-049 identity, D-053 matching).
+--   1. Records whose mail was seen and not since proven gone (`p == true`) are still there: a mail only leaves
+--      while a mailbox is open, and every take fires MAIL_INBOX_UPDATE (a scan). Per key, they pair with the
+--      current mails in arrival order, oldest with oldest, whatever the arrival estimates drifted by (up to
+--      MAX_DRIFT). New mails arrive after every record, so the extra mails are the newest ones.
+--   2. Anything left matches an unused record by estimated arrival within MATCH_SLACK, unless that record's mail is
+--      known to have left the inbox (`p == false`): a taken mail never comes back.
+--   3. Anything still left is a new mail.
+-- Seeing a mail proves it is there (`p = true`). Only the server's answer proves absence: after a MAIL_INBOX_UPDATE
+-- scan that shows the whole inbox, unmatched records get `p = false`. A MAIL_SHOW scan reads the client's cached
+-- inbox, which can be stale or not loaded yet, so it never clears anything.
+function Mail.Scan(event)
   if not (ns.db and ns.db.ledgerState and GetInboxNumItems and GetInboxHeaderInfo) then return 0 end
   if ns.db.mail == false then return 0 end
   local now = GetServerTime()
@@ -169,36 +181,73 @@ function Mail.Scan()
   end
   seen = kept
   ns.db.ledgerState.mail = seen
-  local ok, n = pcall(GetInboxNumItems)
+  local ok, n, total = pcall(GetInboxNumItems)
   if not ok or type(n) ~= "number" then return 0 end
   local subjects = Subjects()
-  local used, added = {}, 0
+  local cur = {}
   for i = 1, n do
     local r = Mail.Classify(i, subjects)
     if r then
-      local at = r.daysLeft and floor(now - (Mail.MAX_DAYS - r.daysLeft) * 86400) or now
-      local k = Key(r)
-      local match
-      for j, s in ipairs(seen) do
-        if not used[j] and s.k == k and abs((s.at or 0) - at) <= Mail.MATCH_SLACK then match = j break end
-      end
-      if match then
-        used[match] = true
-        Enrich(seen[match].at, k, r)
-      else
-        local itemID = r.itemID or Mail.ResolveName(r.itemName)
-        local unit = r.gross and r.qty and r.qty > 0 and floor(r.gross / r.qty + 0.5) or nil
-        local e = ns.Ledger.Add("invoice", itemID, r.qty, unit, "MAIL", {
-          outcome = r.outcome, itemName = r.itemName, gross = r.gross, deposit = r.deposit, cut = r.cut, net = r.net,
-          sender = r.sender, house = r.house, at = at })
-        if e then
-          seen[#seen + 1] = { k = k, at = at }
-          used[#seen] = true
-          added = added + 1
-        end
+      r.at = r.daysLeft and floor(now - (Mail.MAX_DAYS - r.daysLeft) * 86400) or now
+      r.k = Key(r)
+      cur[#cur + 1] = r
+    end
+  end
+  local used, match = {}, {}
+  -- 1. rank pairing with records known to be in the inbox
+  local byKey = {}
+  for ci, r in ipairs(cur) do
+    byKey[r.k] = byKey[r.k] or {}
+    local t = byKey[r.k]
+    t[#t + 1] = ci
+  end
+  for k, cis in pairs(byKey) do
+    local recs = {}
+    for j, s in ipairs(seen) do
+      if s.p and s.k == k then recs[#recs + 1] = j end
+    end
+    if #recs > 0 then
+      sort(cis, function(a, b) return cur[a].at < cur[b].at end)
+      sort(recs, function(a, b) return (seen[a].at or 0) < (seen[b].at or 0) end)
+      for x = 1, min(#cis, #recs) do
+        local ci, j = cis[x], recs[x]
+        if abs(cur[ci].at - (seen[j].at or 0)) <= Mail.MAX_DRIFT then match[ci], used[j] = j, true end
       end
     end
   end
+  -- 2. estimated-arrival match; 3. new
+  local added = 0
+  for ci, r in ipairs(cur) do
+    local j = match[ci]
+    if not j then
+      for js, s in ipairs(seen) do
+        if not used[js] and s.p ~= false and s.k == r.k and abs((s.at or 0) - r.at) <= Mail.MATCH_SLACK then
+          j = js
+          break
+        end
+      end
+      if j then used[j] = true end
+    end
+    if j then
+      Enrich(seen[j].at, r.k, r)
+    else
+      local itemID = r.itemID or Mail.ResolveName(r.itemName)
+      local unit = r.gross and r.qty and r.qty > 0 and floor(r.gross / r.qty + 0.5) or nil
+      local e = ns.Ledger.Add("invoice", itemID, r.qty, unit, "MAIL", {
+        outcome = r.outcome, itemName = r.itemName, gross = r.gross, deposit = r.deposit, cut = r.cut, net = r.net,
+        sender = r.sender, house = r.house, at = r.at })
+      if e then
+        seen[#seen + 1] = { k = r.k, at = r.at }
+        used[#seen] = true
+        added = added + 1
+      end
+    end
+  end
+  local authoritative = event ~= "MAIL_SHOW" and (type(total) ~= "number" or total <= n)
+  for j, s in ipairs(seen) do
+    if used[j] then s.p = true elseif authoritative then s.p = false end
+  end
+  if added > 0 then ns.Ledger.Settle() end
   return added
 end
 
@@ -249,6 +298,6 @@ function Mail.Init()
   local f = CreateFrame("Frame")
   f:RegisterEvent("MAIL_SHOW")
   f:RegisterEvent("MAIL_INBOX_UPDATE")
-  f:SetScript("OnEvent", function() if ns.db then pcall(Mail.Scan) end end)
+  f:SetScript("OnEvent", function(_, event) if ns.db then pcall(Mail.Scan, event) end end)
   Mail.events = f
 end

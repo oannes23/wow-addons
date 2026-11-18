@@ -14,12 +14,27 @@ local DEFAULTS = { version = 1, enabled = true }
 
 local function Secret(v) return issecretvalue ~= nil and issecretvalue(v) end
 
+-- A plain non-empty string, or nil. The secret test always comes first: comparing, indexing or concatenating a
+-- secret is a Lua error (reference/secret-values.md), and `v == ""` is a comparison (0.1.1: errors in an instance).
+-- Every value from the game reaches the rest of the file through Str or Num.
+local function Str(v)
+  if Secret(v) or type(v) ~= "string" or v == "" then return nil end
+  return v
+end
+
+local function Num(v)
+  if Secret(v) or type(v) ~= "number" then return nil end
+  return v
+end
+
 -- "Name Surname" from UnitName's (name, surname) pair, or from a full name that already carries the surname
 -- ("Name Surname" or "Name-Surname"). nil when there's no surname: the profile API can't look those up.
 function Headcount.Full(name, surname)
-  if type(name) ~= "string" or name == "" or Secret(name) then return nil end
-  if surname ~= nil and (Secret(surname) or type(surname) ~= "string") then return nil end
-  if surname and surname ~= "" then return name .. " " .. surname end
+  name = Str(name)
+  if not name or Secret(surname) then return nil end
+  if type(surname) ~= "nil" and type(surname) ~= "string" then return nil end
+  surname = Str(surname)
+  if surname then return name .. " " .. surname end
   local a, b = name:match("^([^%s%-]+)[%s%-]+(.+)$")
   if a then return a .. " " .. b end
   return nil
@@ -46,7 +61,8 @@ end
 
 function Headcount.NoteGuild(guild)
   local db = ns.db
-  if not (db and db.enabled) or type(guild) ~= "string" or guild == "" or Secret(guild) then return end
+  guild = Str(guild)
+  if not (db and db.enabled and guild) then return end
   if db.guilds[guild] == nil then
     if counts.guilds >= Headcount.MAX_GUILDS then Trim(db.guilds, Headcount.MAX_GUILDS, "guilds") end
     counts.guilds = counts.guilds + 1
@@ -65,12 +81,13 @@ function Headcount.Note(full, src, guild, level, class)
     db.names[full] = row
   end
   row.t, row.s = time(), src
-  if type(guild) == "string" and guild ~= "" and not Secret(guild) then
+  guild, level, class = Str(guild), Num(level), Str(class)
+  if guild then
     row.g = guild
     Headcount.NoteGuild(guild)
   end
-  if type(level) == "number" and not Secret(level) and level > 0 then row.l = level end
-  if type(class) == "string" and class ~= "" and not Secret(class) then row.c = class end
+  if level and level > 0 then row.l = level end
+  if class then row.c = class end
 end
 
 function Headcount.FromUnit(unit, src)
@@ -83,7 +100,7 @@ function Headcount.FromUnit(unit, src)
   local guild
   if GetGuildInfo then
     local okG, g = pcall(GetGuildInfo, unit)
-    if okG and type(g) == "string" and not Secret(g) then guild = g end
+    if okG then guild = Str(g) end
   end
   Headcount.Note(full, src, guild)
 end
@@ -91,10 +108,11 @@ end
 function Headcount.FromWho()
   if not (C_FriendList and C_FriendList.GetNumWhoResults and C_FriendList.GetWhoInfo) then return end
   local ok, n = pcall(C_FriendList.GetNumWhoResults)
-  if not ok or type(n) ~= "number" or Secret(n) then return end
+  n = ok and Num(n)
+  if not n then return end
   for i = 1, n do
     local okI, info = pcall(C_FriendList.GetWhoInfo, i)
-    if okI and type(info) == "table" then
+    if okI and not Secret(info) and type(info) == "table" and not (issecrettable and issecrettable(info)) then
       Headcount.Note(Headcount.Full(info.fullName), "who", info.fullGuildName, info.level, info.filename)
     end
   end
@@ -105,7 +123,7 @@ local PUBLIC_CHAT = { CHAT_MSG_SAY = true, CHAT_MSG_YELL = true, CHAT_MSG_CHANNE
 local frame = CreateFrame("Frame")
 frame:SetScript("OnEvent", function(_, event, a1, a2)
   if event == "NAME_PLATE_UNIT_ADDED" then
-    if type(a1) == "string" and not Secret(a1) then Headcount.FromUnit(a1, "np") end
+    if Str(a1) then Headcount.FromUnit(a1, "np") end
   elseif event == "UPDATE_MOUSEOVER_UNIT" then
     Headcount.FromUnit("mouseover", "mo")
   elseif event == "PLAYER_TARGET_CHANGED" then

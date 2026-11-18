@@ -480,8 +480,31 @@ def main():
     test_commodity_partial_sale_d047()
     test_repair_d047()
     test_house_confidence_guard()
+    test_invoice_settles_vanish_d054()
     test_no_restricted_calls()
     print("Wuwei phase 2 harness: OK")
+
+
+def test_invoice_settles_vanish_d054():
+    """Mightfish 2026-11-17/18: the sale mail is read first; the next AH visit finds the auction gone after its expiry
+    time. The vanish books the invoice's outcome (sold), not the D-017 guess (expired)."""
+    rt, ns, g, ah = boot2()
+    ns.House.Set("117")
+    snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED"); snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")   # baselined
+    snap(rt, g, A(101623502, 13927, 14, 800, 3600)); g.fire("OWNED_AUCTIONS_UPDATED")
+    ns.Ledger.Add("invoice", 13927, 14, 800, "MAIL", rt.eval('{ outcome = "sold", house = 117, at = %d }' % (g.server + 600)))
+    g.server += 86400
+    g.fire("AUCTION_HOUSE_SHOW"); snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")      # first list empty: not trusted
+    snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")
+    e = [x for x in g.WuweiDB.ledger.values() if x.auctionID == 101623502 and x.kind != "post"]
+    assert [(x.kind, x.qty, x.inferred, x.settled, x.wasKind) for x in e] == [("sold", 14, None, True, "expired")], \
+        [(x.kind, x.qty, x.inferred) for x in e]
+    # Without an invoice the guess stands (D-017), inferred
+    snap(rt, g, A(5, 13927, 3, 800, 60)); g.fire("OWNED_AUCTIONS_UPDATED")
+    g.server += 3600; snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")
+    last = list(g.WuweiDB.ledger.values())[-1]
+    assert (last.kind, last.inferred, last.settled) == ("expired", True, None)
+    ns.House.Set("auto")
 
 
 if __name__ == "__main__":

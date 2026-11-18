@@ -157,10 +157,53 @@ local function Resolve(id, rec, now)
   else
     -- Gone before its expiry time (or expiry unknown) = sold; gone after it = expired. Inherently a guess:
     -- a sale picked up after the expiry time looks like an expiry. SPEC D-017.
+    -- A mail invoice already in the ledger replaces the guess (D-054).
     local expired = rec.expires and now >= rec.expires - Ledger.EXPIRY_SLACK
     Ledger.Add(expired and "expired" or "sold", rec.itemID, q, rec.unit, "OWNED_AUCTIONS_UPDATED",
       { auctionID = id, inferred = true })
+    Ledger.Settle()
   end
+end
+
+-- D-054: a mail invoice settles the inferred outcome of the owned-auction vanish it describes. They match on house,
+-- item and quantity, plus the unit price (±1c) for a sale. Oldest entry first takes the oldest matching invoice;
+-- each invoice settles one entry (`settles` = that auctionID, or true). Only `inferred` remainders change: the
+-- entry takes the invoice's outcome and loses `inferred`; `wasKind` keeps a corrected guess. Idempotent; it runs
+-- at login, after a new invoice and after a guessed vanish, so either may come first.
+local OUTCOME_KIND = { sold = "sold", expired = "expired", canceled = "cancel" }
+Ledger.SETTLE_WINDOW = 500 -- newest entries searched
+
+function Ledger.Settle()
+  local l = Ledger.Entries()
+  local first = math.max(1, #l - Ledger.SETTLE_WINDOW + 1)
+  local free = {}
+  for i = first, #l do
+    local e = l[i]
+    if e.kind == "invoice" and OUTCOME_KIND[e.outcome] and e.itemID and not e.settles then free[#free + 1] = e end
+  end
+  if #free == 0 then return 0 end
+  sort(free, function(a, b) return (a.at or 0) < (b.at or 0) end)
+  local n = 0
+  for i = first, #l do
+    local e = l[i]
+    if e.inferred and not e.partial and (e.kind == "sold" or e.kind == "expired") then
+      for j = 1, #free do
+        local inv = free[j]
+        if inv and inv.house == e.house and inv.itemID == e.itemID and inv.qty == e.qty
+          and (inv.outcome ~= "sold" or not (inv.unit and e.unit) or math.abs(inv.unit - e.unit) <= 1) then
+          local kind = OUTCOME_KIND[inv.outcome]
+          if kind ~= e.kind then e.wasKind = e.kind end
+          e.kind, e.inferred, e.settled = kind, nil, true
+          inv.settles = e.auctionID or true
+          free[j] = false
+          n = n + 1
+          break
+        end
+      end
+    end
+  end
+  if n > 0 then cache = nil end
+  return n
 end
 
 -- Group the owned list by auctionID: one live row plus any Sold rows. A partly sold commodity auction lists its sold
@@ -401,6 +444,7 @@ function Ledger.Init()
   db.ledgerVersion = db.ledgerVersion or Ledger.VERSION
   State()
   Ledger.Repair()
+  pcall(Ledger.Settle) -- D-054: settles guesses made before their invoice was read (and before 0.6.1)
   if Ledger.events then return end
   local ev = CreateFrame("Frame")
   for name in pairs(H) do ev:RegisterEvent(name) end

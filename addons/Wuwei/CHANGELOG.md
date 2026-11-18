@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1
+- **No more double-counted mail** (SPEC D-053). A mail left in your mailbox and read again later could be recorded a second time, because the game's "days left" clock had moved between visits. Wuwei now remembers which mails it has seen in the inbox and pairs them in order on the next visit, however far the clock moved. A mail you took is never confused with a new one of the same item.
+- **Your mail corrects the ledger's guesses** (SPEC D-054). When an auction disappears while you're away, Wuwei had to guess sold or expired from the time. If the sale or return mail matches it (house, item, quantity, price), the mail's answer now wins, whichever you see first: the AH or the mailbox.
+
 ## 0.6.0
 - **Uses block on item tooltips** (SPEC D-052). Under the price block, every item now shows:
   - its **vendor price** per unit and for the stack;

@@ -182,6 +182,99 @@ def test_repair_d049():
     assert len(invoices(g)) == 3
 
 
+BAND = """{ sender = "Horde Auction House", subject = "Auction expired: Assault Band", daysLeft = %r, itemCount = 1 }"""
+PLANS = """{ sender = "Horde Auction House", subject = "Auction expired: Plans: Searing Golden Blade", daysLeft = %r,
+  itemCount = 1 }"""
+
+
+def dl(g, at):
+    """daysLeft that makes the estimate read `at` at the current server time."""
+    return 30 - (g.server - at) / 86400
+
+
+def test_drifted_estimate_d053():
+    """In game 2026-11-18: two expired mails left in the inbox read at 01:51Z with arrival = their expiry, and at 03:20Z
+    with arrival +2937 s for both. 0.6.0 recorded each twice."""
+    rt, ns, g = boot()
+    g.NAMES[13095], g.NAMES[12261] = "Assault Band", "Plans: Searing Golden Blade"
+    g.server = 1794966700                                              # 01:51:40Z
+    inbox(rt, g, BAND % dl(g, 1794964766), PLANS % dl(g, 1794964797)); g.fire("MAIL_SHOW")
+    assert len(invoices(g)) == 2
+    g.server = 1794972043                                              # 03:20:43Z, both estimates +2937 s
+    inbox(rt, g, BAND % dl(g, 1794967703), PLANS % dl(g, 1794967734)); g.fire("MAIL_SHOW")
+    assert len(invoices(g)) == 2, [(e.itemName, e.at) for e in invoices(g)]
+    # A new identical return beside the old one (relisted from bags, expired again): only the newest is new
+    g.server += 7200
+    inbox(rt, g, BAND % dl(g, 1794967703), BAND % dl(g, g.server - 60), PLANS % dl(g, 1794967734))
+    g.fire("MAIL_INBOX_UPDATE")
+    assert [e.itemName for e in invoices(g)] == ["Assault Band", "Plans: Searing Golden Blade", "Assault Band"]
+    # Taken: the records leave the inbox. A later identical mail is new even when its estimate lands next to a
+    # taken one's, and a drifted read of it later is still the same mail.
+    inbox(rt, g); g.fire("MAIL_INBOX_UPDATE")
+    assert all(s.p is False for s in g.WuweiDB.ledgerState.mail.values())
+    g.server += 3000
+    inbox(rt, g, BAND % dl(g, g.server - 3000 + 400)); g.fire("MAIL_SHOW")    # arrived 400 s after the last one taken
+    assert len(invoices(g)) == 4
+    g.server += 5000
+    inbox(rt, g, BAND % dl(g, g.server - 5000 + 400 + 2500)); g.fire("MAIL_SHOW")
+    assert len(invoices(g)) == 4
+
+
+def test_incomplete_scan_keeps_presence_d053():
+    rt, ns, g = boot()
+    g.NAMES[13095] = "Assault Band"
+    inbox(rt, g, BAND % 29.9); g.fire("MAIL_SHOW")
+    rt.execute("GetInboxNumItems = function() return #inbox, #inbox + 60 end")   # more mail than the client shows
+    inbox(rt, g); g.fire("MAIL_INBOX_UPDATE")
+    assert all(s.p is True for s in g.WuweiDB.ledgerState.mail.values())  # unseen is not gone
+    g.server += 4000
+    inbox(rt, g, BAND % 29.9); g.fire("MAIL_SHOW")                      # drifted 4000 s: still the same mail
+    assert len(invoices(g)) == 1
+    # MAIL_SHOW can read an unloaded cache (empty inbox): that proves nothing is gone
+    rt.execute("GetInboxNumItems = function() return #inbox, #inbox end")
+    inbox(rt, g); g.fire("MAIL_SHOW")
+    g.server += 4000
+    inbox(rt, g, BAND % 29.9); g.fire("MAIL_INBOX_UPDATE")
+    assert len(invoices(g)) == 1
+
+
+def test_settle_d054():
+    """In game 2026-11-17/18: 14 Cooked Mightfish sold while away (invoice read 18:56Z); at the next AH visit the
+    auction was gone after its expiry, so D-017 guessed expired."""
+    rt, ns, g = boot()
+    L = ns.Ledger
+    # Older entries that must not take the invoice: a confirmed expiry, another house, a partial sale
+    conf = L.Add("expired", 13927, 14, 800, "AUCTION_HOUSE_AUCTIONS_EXPIRED", rt.eval("{ auctionID = 6, house = 117 }"))
+    other = L.Add("expired", 13927, 14, 800, "OWNED_AUCTIONS_UPDATED", rt.eval("{ auctionID = 7, inferred = true, house = 114 }"))
+    part = L.Add("sold", 13927, 14, 800, "OWNED_AUCTIONS_UPDATED", rt.eval("{ auctionID = 8, inferred = true, partial = true, house = 117 }"))
+    guess = L.Add("expired", 13927, 14, 800, "OWNED_AUCTIONS_UPDATED", rt.eval("{ auctionID = 101623502, inferred = true, house = 117 }"))
+    twin = L.Add("expired", 13927, 14, 800, "OWNED_AUCTIONS_UPDATED", rt.eval("{ auctionID = 10, inferred = true, house = 117 }"))
+    cheap = L.Add("invoice", 13927, 14, 700, "MAIL", rt.eval('{ outcome = "sold", house = 117, at = 5 }'))
+    assert L.Settle() == 0 and guess.kind == "expired"                  # wrong unit price: not this auction
+    inv = L.Add("invoice", 13927, 14, 800, "MAIL", rt.eval('{ outcome = "sold", house = 117, at = 9 }'))
+    assert L.Settle() == 1
+    assert (guess.kind, guess.inferred, guess.settled, guess.wasKind, inv.settles) == ("sold", None, True, "expired", 101623502)
+    assert other.kind == "expired" and other.inferred and part.inferred and cheap.settles is None
+    assert conf.kind == "expired" and conf.settled is None
+    assert (twin.kind, twin.inferred) == ("expired", True)                 # one invoice settles one auction
+    assert L.Settle() == 0                                               # idempotent: one invoice, one entry
+    # P&L counts the corrected sale
+    assert L.PnL().grossRevenue == 2 * 14 * 800                          # the partial sale plus the corrected one
+    # A return mail confirms a guessed sale as an expiry
+    s = L.Add("sold", 2772, 40, 50, "OWNED_AUCTIONS_UPDATED", rt.eval("{ auctionID = 9, inferred = true, house = 114 }"))
+    L.Add("invoice", 2772, 40, None, "MAIL", rt.eval('{ outcome = "expired", house = 114, at = 11 }'))
+    assert L.Settle() == 1 and (s.kind, s.wasKind) == ("expired", "sold")
+
+
+def test_settle_from_mail_scan_d054():
+    """The invoice read after the guess settles it from Mail.Scan."""
+    rt, ns, g = boot()
+    guess = ns.Ledger.Add("expired", 13927, 20, 1900, "OWNED_AUCTIONS_UPDATED",
+                          rt.eval("{ auctionID = 1, inferred = true, house = 117 }"))
+    inbox(rt, g, SOLD_FISH); g.fire("MAIL_SHOW")
+    assert (guess.kind, guess.wasKind) == ("sold", "expired")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

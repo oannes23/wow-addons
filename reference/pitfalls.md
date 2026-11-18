@@ -79,3 +79,9 @@ Wuwei's ledger assumed each owned auction is one row and that `AUCTION_CANCELED`
 - Symptom: StraightHook's zone colours (copied from the world map's `AreaLabelDataProvider`) never showed; every zone was white with no "N–M" range.
 - Cause: Forever's client tables set `ContentTuningID = 0` on every zone in UiMap and AreaTable [SRC: wago.tools DB2, wowf 1.60.1.70938]. The map's level ranges come from that tuning, so `GetMapLevels` returns nothing usable [INGAME 2026-11-17: `0, 0, 0, 0`]. Classic Era's client has no zone tuning either.
 - Fix: ship the Vanilla ranges keyed by uiMapID (`StraightHook/Guide.lua` `Guide.ZONE_LEVELS`) and let the API override when it answers. Forever's new zones (Mount Hyjal 2482, Zephras Isle 2521/2665, Riverglades 2548, Shen'dralas 2652) have no known range.
+
+## P-017 · Test for a secret before any other use: `v == ""` on a secret is an error (2026-11-18)
+- Symptom: Headcount 0.1.0 threw Lua errors in Wailing Caverns although it "checked" every name with `issecretvalue`. The offline harness passed.
+- Cause: the check came last: `type(v) ~= "string" or v == "" or issecretvalue(v)`. The comparison runs first and comparing a secret errors [SRC: secret-values.md; this failure INFER, no error text]. The harness's secret was a plain table, so `SECRET == ""` was just `false`.
+- Rule: `issecretvalue(v)` is the **first** test on any value the game hands you; route values through one helper (`Str`/`Num`) and use nothing else. In Lua 5.1 mocks, model a secret as `newproxy(true)` with erroring metamethods and a `type()` that reports the real type, and add a static check for `==`/`~=` comparisons, which no metamethod can trap across types.
+

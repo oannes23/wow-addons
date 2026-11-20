@@ -24,7 +24,21 @@ function mkLoc(id) return { itemID = id, IsValid = function() return true end } 
 C_Item.GetItemID = function(loc) return loc.itemID end
 C_Item.GetItemInfo = function(id) return "n", "l", 1, 1, 1, "t", "s", 20, "", 0, SELL[id] end
 depositCalls = {}
-C_AuctionHouse.CalculateCommodityDeposit = function(id, dur, qty) depositCalls[#depositCalls+1] = { "c", id, dur, qty } return 100 * qty * dur end
+-- House probe (Wuwei D-057): Light Leather (2318, vendor 15c) quotes 2.5%/h at a faction house, 12.5%/h at Blackwater.
+-- probeRate "auto": the AH the test puts the player at (a Blackwater zone/map => Blackwater); a number forces it
+-- (the Crossroads camp: Horde zone, Blackwater house); nil = no quote.
+probeRate = "auto"
+local BW_ZONES = { ["Booty Bay"] = true, Gadgetzan = true, Everlook = true }
+C_AuctionHouse.CalculateCommodityDeposit = function(id, dur, qty)
+  if id == 2318 then
+    local r = probeRate
+    if r == "auto" then
+      local bw = BW_ZONES[zone or ""] or BW_ZONES[subzone or ""] or (mapID and mapID == 999)
+      r = bw and 0.125 or 0.025
+    end
+    return r and math.floor(15 * qty * r * ({ 2, 8, 24 })[dur]) or nil
+  end
+  depositCalls[#depositCalls+1] = { "c", id, dur, qty } return 100 * qty * dur end
 C_AuctionHouse.CalculateItemDeposit = function(loc, dur, qty) depositCalls[#depositCalls+1] = { "i", loc.itemID, dur, qty } return 50 * qty * dur end
 owned = {}
 C_AuctionHouse.GetOwnedAuctions = function() return owned end
@@ -272,10 +286,10 @@ def test_cost_basis_pnl_cap_slash():
     add("sold", 2589, 10, 100)                                               # sold with no buy on record: cost 0, flagged
     r = Lg.PnL(); assert r.unbasedSoldQty == 10 and r.realized == 13250 + 950
     assert {k: v for k, v in r.counts.items()} == {"buy": 2, "post": 1, "sold": 2, "cancel": 1, "expired": 0, "invoice": 0}
-    g.zone = "Gadgetzan"                                                     # Blackwater: assumed 15% cut
+    g.zone = "Gadgetzan"; ns.House.ResetProbe()                              # Blackwater: assumed 15% cut
     add("sold", 4338, 10, 1000); r = Lg.PnL()
     assert r.netRevenue == 33250 + 950 + 8500
-    g.zone = "Orgrimmar"
+    g.zone = "Orgrimmar"; ns.House.ResetProbe()                              # the probe is per AH visit (D-057)
     # CostBasis feeds the post helper
     cf = ah.CommoditiesSellFrame; cf.shown = True; cf.item = g.mkLoc(4338); cf.qty = 1; cf.price = 450
     cf.UpdatePostState(cf)
@@ -403,6 +417,7 @@ def test_repair_d047():
 def test_house_confidence_guard():
     """D-030: Detect returns a confidence flag; an unconfident house never drives the owned-auction diff."""
     rt, ns, g, ah = boot2()
+    g.probeRate = None; ns.House.ResetProbe()                        # no deposit quote: location rules (D-057 tested apart)
     H = ns.House
     conf = lambda: bool(tuple(H.Detect())[2])
     assert conf()                                                    # Orgrimmar, Horde
@@ -433,7 +448,7 @@ def test_house_confidence_guard():
     assert len(g.WuweiDB.ledger) == n and 2 in list(g.WuweiDB.ledgerState.owned.keys())
     snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED"); assert len(g.WuweiDB.ledger) == n + 1
     # A fresh DB does not baseline while unconfident
-    rt2, ns2, g2, _ = boot2(); g2.zone = "Ratchet"
+    rt2, ns2, g2, _ = boot2(); g2.zone = "Ratchet"; g2.probeRate = None; ns2.House.ResetProbe()
     snap(rt2, g2, A(5, 4338, 1, 400, 9000)); g2.fire("OWNED_AUCTIONS_UPDATED")
     assert not g2.WuweiDB.ledgerState.baselined and len(list(g2.WuweiDB.ledgerState.owned.keys())) == 0
     # /wuwei status says so and names the fix; a confident house does not

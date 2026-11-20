@@ -20,9 +20,48 @@ House.FACTION_CAPITALS = {
 -- Returns houseID (or nil if unknown), a short reason string for `/wuwei status`, and `confident` (boolean): true for
 -- a manual override, a map or Blackwater zone match, or the faction fallback inside a faction capital. When false the
 -- house is a guess; Ledger.OnOwnedUpdated then refuses to act on it (SPEC D-030).
+-- Deposit probe (D-057): no API names the open auction house, but its deposit quote does. Blackwater charges 5x the
+-- faction rate (12.5%/h vs 2.5%/h of vendor price, reference/auction-house.md [INGAME 2026-11-15]): 100 Light Leather
+-- (vendor 15c) for 24 h quote 9s at a faction house and 45s at Blackwater. The quote is a client-side calculation (no
+-- query, no throttle). The rotating Crossroads camp auctioneer opens Blackwater, so location alone can't tell.
+House.PROBE_ITEM, House.PROBE_QTY, House.PROBE_DURATION = 2318, 100, 3 -- Light Leather, 100, 24 h (luaIndex 3)
+House.PROBE_VENDOR = 15 -- copper, checked against the tooltip 2026-11-15; used when GetItemInfo has no sell price yet
+House.PROBE_SPLIT = 1.5 -- deposit per (vendor x qty) over 24 h: 0.6 faction, 3.0 Blackwater; split between them
+local probe -- { house = id } while the AH is open; nil = not probed (or the quote wasn't available yet)
+
+local function AHOpen()
+  local ahf = _G.AuctionHouseFrame
+  return ahf and ahf.IsShown and ahf:IsShown()
+end
+
+-- Returns 117, the faction house, or nil (no quote: API missing, item data not loaded, not at an AH).
+function House.Probe()
+  local AH = C_AuctionHouse
+  if not (AH and AH.CalculateCommodityDeposit) then return nil end
+  local ok, dep = pcall(AH.CalculateCommodityDeposit, House.PROBE_ITEM, House.PROBE_DURATION, House.PROBE_QTY)
+  if not ok or type(dep) ~= "number" or dep <= 0 then return nil end
+  local vendor = select(11, C_Item.GetItemInfo(House.PROBE_ITEM))
+  if type(vendor) ~= "number" or vendor <= 0 then vendor = House.PROBE_VENDOR end
+  local ratio = dep / (vendor * House.PROBE_QTY)
+  if ratio >= House.PROBE_SPLIT then return ns.Plan.BLACKWATER end
+  local faction = UnitFactionGroup and UnitFactionGroup("player")
+  return faction and FACTION_HOUSE[faction] or nil
+end
+
+function House.ResetProbe() probe = nil end
+
 function House.Detect()
   local db = ns.db
   if db and db.house then return db.house, "manual override", true end
+  if AHOpen() then
+    if not probe then
+      local h = House.Probe()
+      if h then probe = { house = h } end
+    end
+    if probe then return probe.house, "deposit quote", true end
+  else
+    probe = nil
+  end
   local mapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
   if mapID and House.BLACKWATER_MAPS[mapID] then return ns.Plan.BLACKWATER, "map " .. mapID, true end
   local zone = GetZoneText and GetZoneText() or ""

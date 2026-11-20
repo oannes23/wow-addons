@@ -94,6 +94,53 @@ end
 
 local function Valid(e) return type(e) == "table" and type(e.buyMax) == "number" and type(e.fair) == "number" end
 
+----------------------------------------------------------------------------------------------------
+-- Confidence (D-059, owner request 2026-11-20): how likely a found steal resells near fair. A product of three
+-- factors in [0, 1], each a plain step table so the chat line can say why:
+--   gap    : the next listing above it. After your own item search (depth check) the second-lowest buyout is known:
+--            second / fair, scaled so >= 80% of fair is full support (the market agrees with fair), floor 0.3.
+--            Before it, only the browse row's listing count: 1 listed 0.8, 2 listed 0.6, more 0.4.
+--            The only listing, confirmed by a search: 0.85 (nothing undercuts the resale, nothing confirms fair).
+--   fair   : sales behind the fair value (n): >= 20 1.0, >= 8 0.85, >= 3 0.7, else 0.5.
+--   resale : sales per day (perDay, from the pipeline): >= 3 1.0, >= 1 0.85, >= 0.3 0.7, else 0.5; unknown 0.75.
+--   haul   : resale at another house 0.9 (a trip, a second cut model).
+-- high >= 60%, med >= 40%, else low. A heuristic, not a calibrated probability: the step values are judgement until
+-- the pipeline backtests them against what cheap listings actually sold for.
+----------------------------------------------------------------------------------------------------
+Steals.CONF_HIGH, Steals.CONF_MED = 0.6, 0.4
+
+local function Step(v, steps, otherwise)
+  if type(v) ~= "number" then return otherwise end
+  for _, s in ipairs(steps) do if v >= s[1] then return s[2] end end
+  return steps[#steps][3]
+end
+
+-- f: a found row { price, fair, qty, second?, searched?, n?, perDay?, sell? }. Returns pct (0-100), label, factors.
+function Steals.Confidence(f, house)
+  local gap
+  if f.searched then
+    if type(f.second) == "number" and f.second > 0 then
+      gap = math.max(0.3, math.min(1, f.second / f.fair / 0.8))
+    else
+      gap = 0.85
+    end
+  else
+    gap = (f.qty == 1 and 0.8) or (f.qty == 2 and 0.6) or (type(f.qty) == "number" and 0.4) or 0.6
+  end
+  local fair = Step(f.n, { { 20, 1.0 }, { 8, 0.85 }, { 3, 0.7, 0.5 } }, 0.7)
+  local resale = Step(f.perDay, { { 3, 1.0 }, { 1, 0.85 }, { 0.3, 0.7, 0.5 } }, 0.75)
+  local haul = (type(f.sell) == "number" and house and f.sell ~= house) and 0.9 or 1
+  local c = gap * fair * resale * haul
+  local label = c >= Steals.CONF_HIGH and "high" or (c >= Steals.CONF_MED and "med" or "low")
+  return floor(c * 100 + 0.5), label, { gap = gap, fair = fair, resale = resale, haul = haul }
+end
+
+local function ConfText(f)
+  local pct, label = Steals.Confidence(f, Steals.ActiveHouse())
+  return format(L["confidence %d%% (%s)"], pct, L[label])
+end
+Steals.ConfText = ConfText
+
 function Steals.Entry(id)
   local s = Steals.Data()
   local e = s and s.items[id]
@@ -129,7 +176,7 @@ local function PlayAlert()
   end
 end
 
-local function Notify(id, e, price, qty, check)
+local function Notify(id, e, price, qty, check, f)
   local house = Steals.ActiveHouse()
   local resale = Resale(e, house)
   local tail = ""
@@ -146,7 +193,7 @@ local function Notify(id, e, price, qty, check)
     depth = " · " .. (qty == 1 and L["only listing"] or format(L["%d listed"], qty))
   end
   Say(format(L["STEAL %s listed at %s · fair %s (%d%%) · alert ≤ %s · Search in the Wuwei panel"], ItemLink(id),
-    Money(price), Money(e.fair), pct, Money(e.buyMax)) .. depth .. tail)
+    Money(price), Money(e.fair), pct, Money(e.buyMax)) .. depth .. tail .. (f and (" · " .. ConfText(f)) or ""))
 end
 
 -- One watched item seen at `price` (lowest minPrice over its keys in this reply, `qty` = that row's totalQuantity).
@@ -174,11 +221,15 @@ function Steals.Observe(id, price, key, qty)
     end
     check = false -- depth check confirmed it
   end
+  local prev = found[id]
   found[id] = { id = id, price = price, key = key, fair = e.fair, buyMax = e.buyMax, pct = price / e.fair, at = GetTime(),
-    qty = qty, check = check or nil, net = e.net, sell = e.sell }
+    qty = qty, check = check or nil, net = e.net, sell = e.sell, n = e.n, perDay = e.perDay }
+  if v and prev and prev.price == price then -- keep what the depth check learned about this listing (D-059)
+    found[id].searched, found[id].second = prev.searched, prev.second
+  end
   if notified[id] == nil or price < notified[id] or (notifiedCheck[id] and not check) then
     notified[id], notifiedCheck[id] = price, check
-    if not v then Notify(id, e, price, qty, check) end
+    if not v then Notify(id, e, price, qty, check, found[id]) end
     return not check
   end
   return false
@@ -273,9 +324,19 @@ function Steals.BuildJobs()
   sort(plain)
   sort(gear)
   if Steals.keysOK ~= false then
+    -- Scan order (D-057): the pipeline's rank (best observed yield first), so the first replies cover the items most
+    -- likely to be mispriced; unranked items (older plans) follow, non-gear before gear, by item ID as before.
     local all = {}
     for _, id in ipairs(plain) do all[#all + 1] = id end
     for _, id in ipairs(gear) do all[#all + 1] = id end
+    local pos = {}
+    for i, id in ipairs(all) do pos[id] = i end
+    local function rank(id) local r = s.items[id].rank return type(r) == "number" and r or huge end
+    sort(all, function(a, b)
+      local ra, rb = rank(a), rank(b)
+      if ra ~= rb then return ra < rb end
+      return pos[a] < pos[b]
+    end)
     local ids, keys = {}, {}
     local function flush()
       if #ids > 0 then jobs[#jobs + 1] = { kind = "keys", key = "keys:" .. ids[1], ids = ids, keys = keys } end
@@ -351,11 +412,25 @@ function Steals.Stop(reason)
     if reason == "budget" then tail = L[" (partial: search budget; Scan again in a minute to continue)"] end
     if (S.namesMissing or 0) > 0 then tail = tail .. format(L[" · %d gear names still loading"], S.namesMissing) end
     Say(format(L["Steals scan: %d found · queries: %d%s."], n, S.sent, tail))
-  elseif reason == "player" then
+  elseif reason == "player" or reason == "search" then
     Say(L["Steals scan stopped because you searched; Scan again to resume."])
+  elseif reason == "cancel" then
+    Say(L["Steals scan cancelled; Scan again to resume."])
   end
   Refresh()
 end
+
+-- Cancel (D-057): the panel's Stop button ("cancel") and every Wuwei Search click ("search", before the search is
+-- sent). Stopping first matters: the client's throttled-message queue holds one pending query, and the scan's next
+-- send dropped the player's queued item search, leaving Blizzard's buy frame waiting forever [INFER from the
+-- AUCTION_HOUSE_THROTTLED_MESSAGE_QUEUED/DROPPED events; owner report 2026-11-20]. True when a scan was running.
+function Steals.Cancel(reason)
+  if not S.active then return false end
+  Steals.Stop(reason or "cancel")
+  return true
+end
+
+function Steals.Active() return S.active end
 
 -- A job is done: on a complete reply, watched items it did not list are no longer for sale (D-037). A failed reply
 -- says nothing about them.
@@ -498,6 +573,7 @@ function Steals.Scan()
   S.queue, S.qi, S.sent, S.job, S.awaiting = q, 0, 0, nil, nil
   S.timeouts, S.errors, S.namesMissing, S.result, S.lastSend, S.waitSince = 0, 0, 0, nil, nil, nil
   S.active, S.startedAt = true, GetTime()
+  if ns.Panel and ns.Panel.SetMode then ns.Panel.SetMode("steals", true) end
   if ticker then ticker:SetScript("OnUpdate", function() Steals.Tick() end) end
   Steals.Tick()
   return true
@@ -508,6 +584,11 @@ end
 ----------------------------------------------------------------------------------------------------
 local function Ago(t) return ns.Plan.AgeText(floor(GetTime() - t)) end
 
+function Steals.Stopped()
+  local r = S.result
+  return r == "player" or r == "search" or r == "cancel"
+end
+
 function Steals.StatusText()
   if not Steals.On() then return "" end
   if S.active then return format(L["Steals: scanning %d/%d..."], math.max(S.qi, 1), #S.queue) end
@@ -515,7 +596,7 @@ function Steals.StatusText()
   for _ in pairs(found) do n = n + 1 end
   if S.endedAt then
     return format(L["Steals: %d found · scanned %s ago · queries: %d%s"], n, Ago(S.endedAt), S.sent,
-      S.result == "budget" and L[" · partial"] or (S.result == "player" and L[" · stopped"] or ""))
+      S.result == "budget" and L[" · partial"] or (Steals.Stopped() and L[" · stopped"] or ""))
   end
   if n > 0 then return format(L["Steals: %d found in browsed results · %d watched"], n, Steals.Count()) end
   return format(L["Steals: %d watched · Scan steals to check"], Steals.Count())
@@ -556,7 +637,7 @@ function Steals.TooltipLine(id)
 end
 
 ----------------------------------------------------------------------------------------------------
--- /wuwei steals [on|off|scan|sound [on|off]]
+-- /wuwei steals [on|off|scan|stop|sound [on|off]]
 ----------------------------------------------------------------------------------------------------
 function Steals.Slash(arg)
   local sub, rest = (arg or ""):lower():match("^(%S*)%s*(%S*)")
@@ -568,12 +649,15 @@ function Steals.Slash(arg)
   elseif sub == "scan" then
     Steals.Scan()
     return
+  elseif sub == "stop" or sub == "cancel" then
+    if not Steals.Cancel("cancel") then Say(L["No steals scan running."]) end
+    return
   elseif sub == "sound" then
     if rest == "on" then ns.db.stealsSound = true
     elseif rest == "off" then ns.db.stealsSound = false
     else ns.db.stealsSound = ns.db.stealsSound == false end
   elseif sub ~= "" then
-    Say(L["usage: /wuwei steals [on | off | scan | sound [on|off]]"])
+    Say(L["usage: /wuwei steals [on | off | scan | stop | sound [on|off]]"])
     return
   end
   Say(Steals.StatusLine())
@@ -603,7 +687,20 @@ local function Lowest(itemKey, pct)
   if #rows == 0 then return nil end
   local cap, count = lowest * (1 + pct / 100), 0
   for _, r in ipairs(rows) do if r[1] <= cap then count = count + r[2] end end
-  return lowest, count
+  -- The next price a buyer would pay after the cheapest unit (D-059): another unit of the cheapest row, else the
+  -- lowest other row. nil when the cheapest is the only unit listed.
+  local second
+  for _, r in ipairs(rows) do
+    if r[1] == lowest and r[2] > 1 then second = lowest end
+  end
+  if not second then
+    local seenLowest = false
+    for _, r in ipairs(rows) do
+      if r[1] == lowest and not seenLowest then seenLowest = true
+      elseif not second or r[1] < second then second = r[1] end
+    end
+  end
+  return lowest, count, second
 end
 
 function Steals.OnItemSearch(itemKey)
@@ -614,7 +711,7 @@ function Steals.OnItemSearch(itemKey)
   local pct, nearMax = Near(s)
   local AH = C_AuctionHouse
   if not (e and pct and AH.GetNumItemSearchResults and AH.GetItemSearchResultInfo) then return end
-  local lowest, count = Lowest(itemKey, pct)
+  local lowest, count, second = Lowest(itemKey, pct)
   if not lowest then return end
   local partial = false
   if AH.HasFullItemSearchResults then
@@ -630,17 +727,21 @@ function Steals.OnItemSearch(itemKey)
     verdict[id] = { floor = true, price = lowest, count = count }
     found[id] = nil
   elseif lowest <= e.buyMax then
-    if not (v and not v.floor and v.price == lowest and v.count == count) then
-      Say(format(L["%s: STEAL confirmed, %d near %s"], ItemLink(id), count, Money(lowest)) .. tail)
-    end
-    verdict[id] = { price = lowest, count = count }
     local f = found[id]
     if f and f.price == lowest then
       f.check = nil
     else
-      found[id] = { id = id, price = lowest, key = itemKey, fair = e.fair, buyMax = e.buyMax, pct = lowest / e.fair,
-        at = GetTime(), qty = count, net = e.net, sell = e.sell }
+      f = { id = id, price = lowest, key = itemKey, fair = e.fair, buyMax = e.buyMax, pct = lowest / e.fair,
+        at = GetTime(), qty = count, net = e.net, sell = e.sell, n = e.n, perDay = e.perDay }
+      found[id] = f
     end
+    f.searched, f.second = true, second
+    if not (v and not v.floor and v.price == lowest and v.count == count) then
+      local nextText = second and format(L[" · next %s (%.1fx)"], Money(second), second / lowest) or L[" · only listing"]
+      Say(format(L["%s: STEAL confirmed, %d near %s"], ItemLink(id), count, Money(lowest)) .. nextText .. " · "
+        .. ConfText(f) .. tail)
+    end
+    verdict[id] = { price = lowest, count = count }
     notified[id], notifiedCheck[id] = math.min(notified[id] or lowest, lowest), false
   else
     verdict[id] = nil -- above the alert price: not a steal (D-037)
@@ -659,6 +760,9 @@ local function Hook(ahf)
   local function safe(fn) return function(...) pcall(fn, ...) end end
   if type(ahf.SendBrowseQueryInternal) == "function" then
     hooksecurefunc(ahf, "SendBrowseQueryInternal", safe(Steals.OnPlayerBrowse))
+  end
+  if type(ahf.QueryItem) == "function" then -- item search: a browse-row click, or Blizzard's buy-frame refresh
+    hooksecurefunc(ahf, "QueryItem", safe(function() Steals.Cancel("search") end))
   end
   if type(ahf.QueryAll) == "function" then
     hooksecurefunc(ahf, "QueryAll", safe(function(_, ctx)

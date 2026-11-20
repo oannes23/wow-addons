@@ -35,7 +35,7 @@ function FRAME:SetScript(n, fn) self.scripts[n] = fn end
 function FRAME:Show() self.shown = true end
 function FRAME:Hide() self.shown = false end
 function FRAME:IsShown() return self.shown end
-function FRAME:SetSize() end function FRAME:SetFrameStrata() end function FRAME:SetText() end
+function FRAME:SetSize() end function FRAME:SetFrameStrata() end function FRAME:SetText(t) self.label = t end
 function FRAME:SetAllPoints() end function FRAME:SetColorTexture() end function FRAME:ClearAllPoints() self.points = {} end
 function FRAME:SetPoint(...) self.points = self.points or {} self.points[#self.points+1] = { ... } end
 function FRAME:CreateFontString() return newFS() end
@@ -70,7 +70,7 @@ loadReq = {}
 C_Item = { GetItemNameByID = function(id) return NAMES[id] end, RequestLoadItemDataByID = function(id) loadReq[#loadReq+1] = id end }
 """
 
-TOC_LUA = ["Locales/enUS.lua", "Data/Builtin.lua", "Data/Plan.lua", "Data/Prices.lua", "Data/Uses.lua", "Plan.lua", "House.lua", "Prices.lua", "Exits.lua", "Ledger.lua", "Mail.lua", "Post.lua", "Tooltip.lua", "Panel.lua", "Steals.lua", "Keys.lua", "Core.lua"]
+TOC_LUA = ["Locales/enUS.lua", "Data/Builtin.lua", "Data/Plan.lua", "Data/Prices.lua", "Data/Uses.lua", "Plan.lua", "House.lua", "Prices.lua", "Exits.lua", "Ledger.lua", "Mail.lua", "Post.lua", "Tooltip.lua", "Markets.lua", "Panel.lua", "Steals.lua", "Keys.lua", "Core.lua"]
 
 
 def toc_files():
@@ -171,6 +171,7 @@ def main() -> None:
     # --- Panel: not shown until AUCTION_HOUSE_SHOW; anchors to AuctionHouseFrame; hides on close
     ah = g.mkAH(); ah.shown = True
     assert ns.Panel.frame is None
+    g.WuweiDB.panelMode = "plays"                                            # Plays tab (D-058); steals is the default
     g.fire("AUCTION_HOUSE_SHOW")
     f = ns.Panel.frame
     assert f.shown and f.points[1][1] == "TOPLEFT" and f.points[1][2].name == "AuctionHouseFrame" and f.points[1][3] == "TOPRIGHT"
@@ -255,6 +256,7 @@ def test_shuttle_off():
     assert strip_colors(ns.Tooltip.Line(4304)) == "Wuwei: SELL ≥ 6s 50c · ref 6s · BW ≥ 13s (2.4×) shuttle off · 42m"
     assert strip_colors(ns.Tooltip.Line(3357)) == "Wuwei: SHUTTLE (off) → BW ≥ 65s (5.4×) · ref 12s · 42m"
     assert strip_colors(ns.Tooltip.Line(4338)) == "Wuwei: SELL ≥ 4s 20c · ref 3s 60c · 42m"   # non-shuttle untouched
+    g.WuweiDB.panelMode = "plays"
     ah = g.mkAH(); ah.shown = True; g.fire("AUCTION_HOUSE_SHOW")
     f = ns.Panel.frame
     assert strip_colors(f.header.text).endswith("market: DEFLATION · shuttle off (2)"), f.header.text
@@ -275,6 +277,7 @@ def test_panel_load_requests():
     rt, ns = boot(); g = rt.globals()
     g.WuweiDB.shuttle = True                                         # Liferoot is row 1 only with the shuttle on
     g.NAMES[3357] = None
+    g.WuweiDB.panelMode = "plays"
     ah = g.mkAH(); ah.shown = True; g.fire("AUCTION_HOUSE_SHOW")
     f = ns.Panel.frame
     for _ in range(5): ns.Panel.Refresh()

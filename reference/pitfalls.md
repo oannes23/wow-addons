@@ -85,3 +85,8 @@ Wuwei's ledger assumed each owned auction is one row and that `AUCTION_CANCELED`
 - Cause: the check came last: `type(v) ~= "string" or v == "" or issecretvalue(v)`. The comparison runs first and comparing a secret errors [SRC: secret-values.md; this failure INFER, no error text]. The harness's secret was a plain table, so `SECRET == ""` was just `false`.
 - Rule: `issecretvalue(v)` is the **first** test on any value the game hands you; route values through one helper (`Str`/`Num`) and use nothing else. In Lua 5.1 mocks, model a secret as `newproxy(true)` with erroring metamethods and a `type()` that reports the real type, and add a static check for `==`/`~=` comparisons, which no metamethod can trap across types.
 
+
+## P-018 · An addon's AH queries can knock the player's search out of the throttled queue (2026-11-20)
+- Symptom: Wuwei's steals scan was running; the player clicked Search on a steal it had just found. Blizzard's buy frame hung, and after reopening the AH the listing was gone.
+- Cause [INFER]: AH searches go through a client-side throttled-message queue (`AUCTION_HOUSE_THROTTLED_MESSAGE_QUEUED/SENT/DROPPED`, `IsThrottledMessageSystemReady`). The scan kept sending `SearchForItemKeys` on its own schedule. Its next query evidently replaced the player's queued item search, which was then dropped. Blizzard's buy frame doesn't handle a drop, so it waits forever.
+- Rule: any background query loop must stop **before** the player's own search is sent, and a post-hook on Blizzard's search methods (`QueryItem`, `SendBrowseQueryInternal`) must stop it for searches made in Blizzard's UI. If the addon sends the search itself, resend it on `..._MESSAGE_DROPPED` once the queue is ready. Cap the resends.

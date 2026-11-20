@@ -230,9 +230,13 @@ def test_scan_keys_path_alerts_and_panel():
     assert strip(f.steals.text) == "Steals: 2 found · scanned 0m ago · queries: 1", f.steals.text
     rows = [(strip(f.rows[i].signal.text), strip(f.rows[i].name.text), strip(f.rows[i].rule.text), strip(f.rows[i].gain.text))
             for i in range(1, 16) if f.rows[i].shown]
-    assert rows[0] == ("STEAL", "Arcanite Reaper", "90g · 45% of fair 200g", "+110g"), rows[0]
-    assert rows[1] == ("STEAL", "Recipe: Sample", "22g 50s · 50% of fair 45g", "+22g"), rows[1]
-    assert rows[2][0] != "STEAL" and len(rows) == 2 + 5                     # shuttle off: 5 plays below
+    assert rows[0] == ("STEAL", "Arcanite Reaper", "90g · 45% of fair 200g · conf 42%", "+110g"), rows[0]
+    assert rows[1] == ("STEAL", "Recipe: Sample", "22g 50s · 50% of fair 45g · conf 42%", "+22g"), rows[1]
+    assert len(rows) == 2                                                   # steals tab: STEAL/CHECK rows only (D-058)
+    ns.Panel.SetMode("plays")
+    prow = [strip(f.rows[i].signal.text) for i in range(1, 21) if f.rows[i].shown]
+    assert len(prow) == 5 and "STEAL" not in prow, prow                    # shuttle off: 5 plays, no steals
+    ns.Panel.SetMode("steals")
     # Search hand-off with the reply's item key (ilvl 63) and the live price; buying stays in Blizzard's UI
     ah = g.AuctionHouseFrame
     f.rows[1].button.scripts.OnClick(f.rows[1].button)
@@ -478,11 +482,11 @@ def test_tooltip_precedence_house_and_slash():
     assert strip(ns.Tooltip.Line(13518)) == "Wuwei: HOLD ref 40g · 42m"
     assert strip(ns.Tooltip.Line(8485)).startswith("Wuwei: STEAL ≤ 6g")
     # At another house: the line says whose fair value it is, and the scan refuses
-    g.zone = "Everlook"
+    g.zone = "Everlook"; ns.House.ResetProbe()
     assert strip(ns.Tooltip.Line(8485)) == "Wuwei: STEAL ≤ 6g · fair 12g (n 9) · (114) · 42m"
     before = len(g.printed)
     assert S.Scan() is False and "steals list is for house 114; you are at 117" in out(g, before) and len(g.aq) == 0
-    g.zone = "Orgrimmar"
+    g.zone = "Orgrimmar"; ns.House.ResetProbe()
     # Settings
     assert g.WuweiDB.steals is True and g.WuweiDB.stealsSound is True
     slash("steals off")
@@ -711,7 +715,7 @@ def test_depth_check_on_item_search():
     # partial + confirmed says so
     rt.execute("ISR[13518] = { {190000,1} }")
     before = len(g.printed); search_event(rt, g, 13518)
-    assert "STEAL confirmed, 1 near 19g (partial results)" in out(g, before)
+    assert "STEAL confirmed, 1 near 19g" in out(g, before) and out(g, before).rstrip().endswith("(partial results)")
     # unwatched items, steals off, no near, missing APIs, erroring getters: nothing happens
     rt.execute("ISR[2589] = { {1,1} }")
     before = len(g.printed); search_event(rt, g, 2589); assert len(g.printed) == before
@@ -758,7 +762,7 @@ def test_resale_text():
     before = len(g.printed)
     ns.Steals.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 200000, totalQuantity = 7 } }"))
     o = out(g, before)
-    assert o.strip().endswith("Search in the Wuwei panel") and rows_ui(ns)[0][3] == "+25g", (o, rows_ui(ns)[0])
+    assert o.strip().endswith("Search in the Wuwei panel · confidence 21% (low)") and "resell" not in o and rows_ui(ns)[0][3] == "+25g", (o, rows_ui(ns)[0])  # 7 listed 0.4 x n6 0.7 x perDay? 0.75
     no_forbidden(g)
 
 

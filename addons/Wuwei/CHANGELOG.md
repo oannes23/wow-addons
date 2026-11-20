@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0
+- **Search grabs a steal at once** (SPEC D-057). Clicking any Wuwei Search now stops a running steals scan *before* the search goes out. The scan's next query used to knock your search out of the game's queue, leaving the buy frame hanging. If the game drops a search anyway, Wuwei resends it as soon as the auction house is ready (twice at most). Clicking a row in Blizzard's own list stops the scan too, and the Scan button turns into **Stop scan** while it runs.
+- **Best items first:** the scan queries the steals list in order of how often each item has really been mispriced, so the first second of a scan covers the likeliest steals.
+- **Wuwei knows when the Crossroads camp auctioneer is Blackwater** (SPEC D-057). It reads the AH's own deposit quote, which is 5× higher at Blackwater. The right steals list, fees and ledger house now apply there, and at Booty Bay as before.
+- **Panel tabs: Steals, Markets, Plays** (SPEC D-058). *Steals* shows only steals. *Markets* is a stock list per sector (raid inputs, herbs, ore, leather, cloth, enchanting, elemental, cooking, potions, food): 24 h and 7 d change, how many items rose or fell, and the biggest gainers and losers. Open a sector for its movers; Search any of them. *Plays* holds the old plan rows. The panel is wider (600 px, 20 rows).
+- **Steal confidence** (SPEC D-059). Each steal shows `conf N%`, from the gap to the next listing (after you Search it), how many sales back its fair value, and how fast it resells. The confirm line now says what the next listing costs, e.g. `next 77s (3.9x)`.
+- `/wuwei steals stop` cancels a scan.
+
 ## 0.6.2
 - **Mail left in the mailbox is no longer logged again at your next login** (SPEC D-055). 0.6.1 could mistake a half-loaded mailbox for an empty one and forget mails you'd already seen. Now a mail only counts as taken if Wuwei saw it and then saw it go during the same mailbox visit.
 - **One-time cleanup:** the 4 extra "expired" copies of your Assault Band and Searing plans returns are removed at the first login.

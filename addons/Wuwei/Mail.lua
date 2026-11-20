@@ -167,12 +167,16 @@ end
 --   2. Anything left matches an unused record by estimated arrival within MATCH_SLACK, unless that record's mail is
 --      known to have left the inbox (`p == false`): a taken mail never comes back.
 --   3. Anything still left is a new mail.
--- Seeing a mail proves it is there (`p = true`). Only the server's answer proves absence: after a MAIL_INBOX_UPDATE
--- scan that shows the whole inbox, unmatched records get `p = false`. A MAIL_SHOW scan reads the client's cached
--- inbox, which can be stale or not loaded yet, so it never clears anything.
+-- Seeing a mail proves it is there (`p = true`). Absence needs presence then removal in the same mailbox visit
+-- (D-055): a record seen during this visit and missing from a later MAIL_INBOX_UPDATE scan that shows the whole
+-- inbox gets `p = false` (the mail was taken). A visit's inbox loads in steps (CheckInbox is throttled and paged,
+-- MailFrame.lua RefreshInbox), so an early update can be empty or partial: 0.6.1 read that as "every mail gone".
+local visit = {} -- dedupe records seen since this mailbox visit began (MAIL_SHOW)
+
 function Mail.Scan(event)
   if not (ns.db and ns.db.ledgerState and GetInboxNumItems and GetInboxHeaderInfo) then return 0 end
   if ns.db.mail == false then return 0 end
+  if event == "MAIL_SHOW" then visit = {} end
   local now = GetServerTime()
   local seen = State()
   local kept = {}
@@ -243,9 +247,13 @@ function Mail.Scan(event)
       end
     end
   end
-  local authoritative = event ~= "MAIL_SHOW" and (type(total) ~= "number" or total <= n)
+  local complete = event ~= "MAIL_SHOW" and (type(total) ~= "number" or total <= n)
   for j, s in ipairs(seen) do
-    if used[j] then s.p = true elseif authoritative then s.p = false end
+    if used[j] then
+      s.p, visit[s] = true, true
+    elseif complete and visit[s] then
+      s.p, visit[s] = false, nil
+    end
   end
   if added > 0 then ns.Ledger.Settle() end
   return added
@@ -292,12 +300,58 @@ function Mail.Repair()
   return changed
 end
 
+-- One-time cleanup (D-055), after Ledger.Init's settle pass:
+--   1. 0.6.1 cleared presence on a partly loaded inbox: forget every `p = false` (unknown again).
+--   2. Drop the duplicate return mails D-049/D-053 recorded: an unsettled expired/canceled invoice is a copy when an
+--      invoice with the same key, house and quantity settled an auction, their arrival estimates are within
+--      MAX_DRIFT, and no unsettled guess of that item, house and quantity is left for it to settle. A second real
+--      return of the same stack belongs to its own auction, which settles it.
+function Mail.Repair2()
+  local db = ns.db
+  if not db or (db.mailRepair or 0) >= 2 then return 0 end
+  for _, s in ipairs((db.ledgerState and db.ledgerState.mail) or {}) do
+    if s.p == false then s.p = nil end
+  end
+  local l = db.ledger or {}
+  local function pending(inv)
+    for _, e in ipairs(l) do
+      if e.inferred and not e.partial and e.house == inv.house and e.itemID == inv.itemID and e.qty == inv.qty
+        and (e.kind == "sold" or e.kind == "expired" or e.kind == "cancel") then return true end
+    end
+    return false
+  end
+  local keep, dropped = {}, 0
+  for _, e in ipairs(l) do
+    local dup = false
+    if e.kind == "invoice" and not e.settles and (e.outcome == "expired" or e.outcome == "canceled") then
+      for _, c in ipairs(l) do
+        if c ~= e and c.kind == "invoice" and c.settles and Key(c) == Key(e) and c.house == e.house
+          and c.qty == e.qty and abs((c.at or 0) - (e.at or 0)) <= Mail.MAX_DRIFT then
+          dup = not pending(e)
+          break
+        end
+      end
+    end
+    if dup then dropped = dropped + 1 else keep[#keep + 1] = e end
+  end
+  db.ledger = keep
+  db.mailRepair = 2
+  ns.Ledger.Invalidate()
+  return dropped
+end
+
 function Mail.Init()
-  if ns.db then pcall(Mail.Repair) end
+  if ns.db then
+    pcall(Mail.Repair)
+    pcall(Mail.Repair2)
+  end
   if Mail.events or not CreateFrame then return end
   local f = CreateFrame("Frame")
   f:RegisterEvent("MAIL_SHOW")
   f:RegisterEvent("MAIL_INBOX_UPDATE")
-  f:SetScript("OnEvent", function(_, event) if ns.db then pcall(Mail.Scan, event) end end)
+  f:RegisterEvent("MAIL_CLOSED")
+  f:SetScript("OnEvent", function(_, event)
+    if event == "MAIL_CLOSED" then visit = {} elseif ns.db then pcall(Mail.Scan, event) end
+  end)
   Mail.events = f
 end

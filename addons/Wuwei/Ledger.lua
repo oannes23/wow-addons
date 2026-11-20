@@ -151,7 +151,10 @@ local function Resolve(id, rec, now)
   rec.qty, rec.done = 0, true
   if q <= 0 or not rec.itemID then return end
   if rec.cancelPending then
-    Ledger.Add("cancel", rec.itemID, q, rec.unit, "AUCTION_CANCELED", { auctionID = id })
+    -- AUCTION_CANCELED also fires at a partial sale (D-047), so a vanish after it is a guess too (D-056): a remainder
+    -- that sold out while we were away read as a cancel. A mail invoice settles it.
+    Ledger.Add("cancel", rec.itemID, q, rec.unit, "AUCTION_CANCELED", { auctionID = id, inferred = true })
+    Ledger.Settle()
   elseif rec.expiredEvent then
     Ledger.Add("expired", rec.itemID, q, rec.unit, "AUCTION_HOUSE_AUCTIONS_EXPIRED", { auctionID = id })
   else
@@ -170,6 +173,8 @@ end
 -- each invoice settles one entry (`settles` = that auctionID, or true). Only `inferred` remainders change: the
 -- entry takes the invoice's outcome and loses `inferred`; `wasKind` keeps a corrected guess. Idempotent; it runs
 -- at login, after a new invoice and after a guessed vanish, so either may come first.
+-- D-056: guessed cancels settle too, and a remainder bought in pieces settles from several sale invoices whose
+-- quantities add up exactly (oldest first; a sum that overshoots matches nothing).
 local OUTCOME_KIND = { sold = "sold", expired = "expired", canceled = "cancel" }
 Ledger.SETTLE_WINDOW = 500 -- newest entries searched
 
@@ -186,19 +191,32 @@ function Ledger.Settle()
   local n = 0
   for i = first, #l do
     local e = l[i]
-    if e.inferred and not e.partial and (e.kind == "sold" or e.kind == "expired") then
+    if e.inferred and not e.partial and (e.kind == "sold" or e.kind == "expired" or e.kind == "cancel") then
+      local function same(inv)
+        return inv and inv.house == e.house and inv.itemID == e.itemID
+          and (inv.outcome ~= "sold" or not (inv.unit and e.unit) or math.abs(inv.unit - e.unit) <= 1)
+      end
+      local take
       for j = 1, #free do
-        local inv = free[j]
-        if inv and inv.house == e.house and inv.itemID == e.itemID and inv.qty == e.qty
-          and (inv.outcome ~= "sold" or not (inv.unit and e.unit) or math.abs(inv.unit - e.unit) <= 1) then
-          local kind = OUTCOME_KIND[inv.outcome]
-          if kind ~= e.kind then e.wasKind = e.kind end
-          e.kind, e.inferred, e.settled = kind, nil, true
-          inv.settles = e.auctionID or true
-          free[j] = false
-          n = n + 1
-          break
+        if same(free[j]) and free[j].qty == e.qty then take = { j } break end
+      end
+      if not take then
+        local sum, js = 0, {}
+        for j = 1, #free do
+          if sum >= (e.qty or 0) then break end
+          if same(free[j]) and free[j].outcome == "sold" then sum, js[#js + 1] = sum + (free[j].qty or 0), j end
         end
+        if #js > 1 and sum == e.qty then take = js end
+      end
+      if take then
+        local kind = OUTCOME_KIND[free[take[1]].outcome]
+        if kind ~= e.kind then e.wasKind = e.kind end
+        e.kind, e.inferred, e.settled = kind, nil, true
+        for _, j in ipairs(take) do
+          free[j].settles = e.auctionID or true
+          free[j] = false
+        end
+        n = n + 1
       end
     end
   end
@@ -438,12 +456,27 @@ function Ledger.Hook()
   end
 end
 
+-- One-time (D-056): cancels recorded before 0.6.2 were booked as stated; they were guesses. Mark them inferred so
+-- an invoice can settle them.
+function Ledger.Repair2()
+  local db = ns.db
+  if not db or (db.ledgerRepair or 0) >= 2 then return 0 end
+  local n = 0
+  for _, e in ipairs(db.ledger or {}) do
+    if e.kind == "cancel" and not e.settled and not e.inferred then e.inferred, e.repaired, n = true, true, n + 1 end
+  end
+  db.ledgerRepair = 2
+  cache = nil
+  return n
+end
+
 function Ledger.Init()
   local db = ns.db
   db.ledger = db.ledger or {}
   db.ledgerVersion = db.ledgerVersion or Ledger.VERSION
   State()
   Ledger.Repair()
+  Ledger.Repair2()
   pcall(Ledger.Settle) -- D-054: settles guesses made before their invoice was read (and before 0.6.1)
   if Ledger.events then return end
   local ev = CreateFrame("Frame")

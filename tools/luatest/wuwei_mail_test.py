@@ -275,6 +275,100 @@ def test_settle_from_mail_scan_d054():
     assert (guess.kind, guess.wasKind) == ("sold", "expired")
 
 
+def test_inbox_loads_in_steps_d055():
+    """In game 2026-11-19 (0.6.1): at login an inbox update apparently arrived before the mail loaded; 0.6.1 took it
+    as "every mail gone" and logged the Assault Band and plans returns a third time, at accurate estimates."""
+    rt, ns, g = boot()
+    g.NAMES[13095] = "Assault Band"
+    g.server = 1794966700
+    inbox(rt, g, BAND % dl(g, 1794964766)); g.fire("MAIL_SHOW")            # first visit: seen, left in the inbox
+    g.fire("MAIL_CLOSED")
+    g.server = 1795071844                                                 # next login, a day later
+    inbox(rt, g); g.fire("MAIL_SHOW"); g.fire("MAIL_INBOX_UPDATE")       # cache empty, then an empty first update
+    assert all(s.p is True for s in g.WuweiDB.ledgerState.mail.values())  # not seen this visit: not proven gone
+    inbox(rt, g, BAND % dl(g, 1794964768)); g.fire("MAIL_INBOX_UPDATE")
+    assert len(invoices(g)) == 1
+    inbox(rt, g); g.fire("MAIL_INBOX_UPDATE")                             # taken during this visit: gone
+    assert all(s.p is False for s in g.WuweiDB.ledgerState.mail.values())
+    # A closed mailbox ends the visit: the next visit's empty first update proves nothing
+    inbox(rt, g, BAND % dl(g, g.server - 30)); g.fire("MAIL_INBOX_UPDATE")    # a new return
+    g.fire("MAIL_CLOSED"); g.server += 600
+    inbox(rt, g); g.fire("MAIL_SHOW"); g.fire("MAIL_INBOX_UPDATE")
+    assert [s.p for s in g.WuweiDB.ledgerState.mail.values()][-1] is True
+
+
+def test_visit_boundaries_d055():
+    rt, ns, g = boot()
+    g.NAMES[13095] = "Assault Band"
+    p = lambda: [s.p for s in g.WuweiDB.ledgerState.mail.values()]
+    inbox(rt, g, BAND % 29.9); g.fire("MAIL_SHOW")
+    inbox(rt, g); g.fire("MAIL_SHOW"); g.fire("MAIL_INBOX_UPDATE")        # a new visit without MAIL_CLOSED between
+    assert p() == [True]
+    inbox(rt, g, BAND % 29.9); g.fire("MAIL_INBOX_UPDATE"); g.fire("MAIL_CLOSED")
+    inbox(rt, g); g.fire("MAIL_INBOX_UPDATE")                             # an update with no mailbox open
+    assert p() == [True]
+
+
+def test_repair2_d055():
+    """The owner's ledger after 0.6.1: the original return mails settled their auctions, plus two copies each."""
+    rt, ns, g = boot()
+    g.NAMES[13095], g.NAMES[12261] = "Assault Band", "Plans: Searing Golden Blade"
+    inv = lambda name, item, at, settles="nil": (
+        '{ kind = "invoice", ts = 1, itemID = %d, itemName = "%s", qty = 1, house = 114, src = "MAIL", outcome = "expired",'
+        ' at = %d, sender = "Horde Auction House", settles = %s }' % (item, name, at, settles))
+    old = "{" + ",".join([
+        inv("Assault Band", 13095, 1794964766, "103145512"), inv("Plans: Searing Golden Blade", 12261, 1794964797, "103151067"),
+        inv("Assault Band", 13095, 1794967703), inv("Plans: Searing Golden Blade", 12261, 1794967734),
+        inv("Assault Band", 13095, 1794964768), inv("Plans: Searing Golden Blade", 12261, 1794964798),
+        inv("Assault Band", 13095, 1795000000, "5"),                      # a real second return: its own auction
+        '{ kind = "expired", ts = 2, itemID = 2772, qty = 40, house = 114, auctionID = 6, inferred = true, src = "x" }',
+        inv("Iron Ore", 2772, 1794964000, "7").replace("qty = 1", "qty = 40"),
+        inv("Iron Ore", 2772, 1794964100).replace("qty = 1", "qty = 40"),  # unsettled, but a guess is left for it
+        inv("Assault Band", 13095, 1794964766 - 7 * 3600),               # unsettled, 7 h from its settled twin: kept
+        inv("Assault Band", 13095, 1794964770).replace("qty = 1", "qty = 2"),   # another quantity: kept
+        inv("Plans: Searing Golden Blade", 12261, 1794964900, "8"),     # a settled twin within 6 h: kept
+        inv("Linen Cloth", 2589, 1794964000), inv("Linen Cloth", 2589, 1794964100),   # unsettled pair: both kept
+        '{ kind = "buy", ts = 3, itemID = 13095, qty = 1, unit = 30000, house = 117, src = "x" }']) + "}"
+    g.WuweiDB.ledger = rt.eval(old)
+    rt.execute('WuweiDB.ledgerState.mail = { { k = "expired|Assault Band|Horde Auction House", at = 1794964766, p = false } }')
+    g.WuweiDB.mailRepair = 1
+    assert ns.Mail.Repair2() == 4
+    left = [(e.itemName, e.at) for e in g.WuweiDB.ledger.values() if e.kind == "invoice"]
+    assert left == [("Assault Band", 1794964766), ("Plans: Searing Golden Blade", 1794964797), ("Assault Band", 1795000000),
+                    ("Iron Ore", 1794964000), ("Iron Ore", 1794964100), ("Assault Band", 1794964766 - 7 * 3600),
+                    ("Assault Band", 1794964770), ("Plans: Searing Golden Blade", 1794964900),
+                    ("Linen Cloth", 1794964000), ("Linen Cloth", 1794964100)], left
+    assert g.WuweiDB.ledgerState.mail[1].p is None                       # 0.6.1's "gone" forgotten
+    assert ns.Mail.Repair2() == 0 and g.WuweiDB.mailRepair == 2
+
+
+def test_settle_cancel_and_pieces_d056():
+    """Apprentice Ore crates 2026-11-18/19: 10 listed, 3 sold (mail), 7 sold while away (mail); AUCTION_CANCELED had
+    fired at the partial sale, so the vanish was booked as a cancel of 10."""
+    rt, ns, g = boot()
+    L = ns.Ledger
+    over = L.Add("cancel", 248683, 5, 875, "AUCTION_CANCELED", rt.eval("{ auctionID = 1, inferred = true, house = 117 }"))
+    crates = L.Add("cancel", 248683, 10, 875, "AUCTION_CANCELED", rt.eval("{ auctionID = 114922522, inferred = true, house = 117 }"))
+    a = L.Add("invoice", 248683, 3, 875, "MAIL", rt.eval('{ outcome = "sold", house = 117, at = 1 }'))
+    b = L.Add("invoice", 248683, 7, 875, "MAIL", rt.eval('{ outcome = "sold", house = 117, at = 2 }'))
+    assert L.Settle() == 1
+    assert (crates.kind, crates.wasKind, crates.inferred, a.settles, b.settles) == ("sold", "cancel", None, 114922522, 114922522)
+    assert (over.kind, over.inferred) == ("cancel", True)                 # 3 + 7 overshoots 5: no match
+    mixed = L.Add("cancel", 4338, 10, 100, "AUCTION_CANCELED", rt.eval("{ auctionID = 3, inferred = true, house = 117 }"))
+    L.Add("invoice", 4338, 3, 100, "MAIL", rt.eval('{ outcome = "sold", house = 117, at = 4 }'))
+    L.Add("invoice", 4338, 7, None, "MAIL", rt.eval('{ outcome = "expired", house = 117, at = 5 }'))
+    L.Settle()
+    assert (mixed.kind, mixed.inferred) == ("cancel", True)              # a sale plus a return is not one outcome
+    # A cancel mail confirms a guessed cancel
+    c = L.Add("cancel", 2772, 20, 50, "AUCTION_CANCELED", rt.eval("{ auctionID = 2, inferred = true, house = 114 }"))
+    L.Add("invoice", 2772, 20, None, "MAIL", rt.eval('{ outcome = "canceled", house = 114, at = 3 }'))
+    assert L.Settle() == 1 and (c.kind, c.settled, c.wasKind) == ("cancel", True, None)
+    # Cancels from before 0.6.2 become guesses once
+    g.WuweiDB.ledger = rt.eval('{ { kind = "cancel", ts = 1, itemID = 1, qty = 1, src = "AUCTION_CANCELED" } }')
+    g.WuweiDB.ledgerRepair = 1
+    assert L.Repair2() == 1 and g.WuweiDB.ledger[1].inferred and L.Repair2() == 0
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

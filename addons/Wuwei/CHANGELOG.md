@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2
+- **Mail left in the mailbox is no longer logged again at your next login** (SPEC D-055). 0.6.1 could mistake a half-loaded mailbox for an empty one and forget mails you'd already seen. Now a mail only counts as taken if Wuwei saw it and then saw it go during the same mailbox visit.
+- **One-time cleanup:** the 4 extra "expired" copies of your Assault Band and Searing plans returns are removed at the first login.
+- **Partly sold auctions no longer turn into cancels** (SPEC D-056). The game reports a cancel when part of an auction sells, so an auction that later sold out while you were away was booked as cancelled. Now that's a guess, and your sale mails settle it, even when the buyers took it in pieces (3 + 7 crates). Your 10 Apprentice Ore crates will show as sold.
+
 ## 0.6.1
 - **No more double-counted mail** (SPEC D-053). A mail left in your mailbox and read again later could be recorded a second time, because the game's "days left" clock had moved between visits. Wuwei now remembers which mails it has seen in the inbox and pairs them in order on the next visit, however far the clock moved. A mail you took is never confused with a new one of the same item.
 - **Your mail corrects the ledger's guesses** (SPEC D-054). When an auction disappears while you're away, Wuwei had to guess sold or expired from the time. If the sale or return mail matches it (house, item, quantity, price), the mail's answer now wins, whichever you see first: the AH or the mailbox.

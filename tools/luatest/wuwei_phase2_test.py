@@ -366,7 +366,7 @@ def test_commodity_partial_sale_d047():
     # A real cancel: event, then the auction is gone
     snap(rt, g, A(5, 2589, 40, 30, 80000)); g.fire("OWNED_AUCTIONS_UPDATED")
     g.fire("AUCTION_CANCELED", 5); snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")
-    assert L()[-1] == ("cancel", 40, 30, None, None)
+    assert L()[-1] == ("cancel", 40, 30, True, None)                          # a guess until a mail settles it (D-056)
     # The expiry event replaces the time guess
     snap(rt, g, A(6, 2589, 10, 30, 80000)); g.fire("OWNED_AUCTIONS_UPDATED")
     g.fire("AUCTION_HOUSE_AUCTIONS_EXPIRED", 6); snap(rt, g); g.fire("OWNED_AUCTIONS_UPDATED")

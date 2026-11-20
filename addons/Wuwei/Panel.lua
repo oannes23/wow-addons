@@ -90,6 +90,7 @@ function Panel.StealRows(limit)
     rows[#rows + 1] = {
       id = st.id, signal = st.check and "CHECK" or "STEAL", name = ItemName(st.id), steal = st, conf = cpct,
       rule = format(L["%s · %d%% of fair %s"], Plan.Money(st.price), floor(st.pct * 100 + 0.5), Plan.Money(st.fair))
+        .. (st.basis == "listings" and L[" (asking)"] or "") -- thin rule: fair from asking prices (D-060)
         .. " · |c" .. CONF_COLOR[clabel] .. format(L["conf %d%%"], cpct) .. "|r" .. (resale and (" · " .. resale) or ""),
       gain = gain, gainText = gain >= 1 and ("+" .. floor(gain) .. "g") or "",
     }

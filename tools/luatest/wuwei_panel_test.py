@@ -308,6 +308,27 @@ def test_confidence_d059():
     assert "confidence 28% (low)" in o, o
 
 
+def test_listing_basis_d060():
+    # Thin rule: a fair from asking prices rates below any sales count and says so in chat and on the row.
+    items = ["[13518] = { fair = 47500, buyMax = 23750, n = 1, perDay = 0.1, kind = 'recipe', classID = 9, subclassID = 2, basis = 'listings' }",
+             "[8485] = { fair = 120000, buyMax = 60000, n = 1, perDay = 0.1, kind = 'pet', classID = 15, subclassID = 2 }"]
+    rt, ns, g = st.boot2(st.plan_by_house(b114=items), 114)
+    S = ns.Steals
+    C = lambda **kw: tuple(S.Confidence(rt.table_from({"price": 10000, "fair": 47500, **kw}), 114))[:2]
+    assert C(qty=1, n=25, perDay=4, basis="listings") == (32, "low")             # 0.8 x 0.4: weaker than n < 3 (0.5)
+    assert C(qty=1, n=1, perDay=4) == (40, "med")
+    live(rt, g, i13518=[(10000,)])
+    before = len(g.printed)
+    S.Harvest(rt.eval("{ { itemKey = { itemID = 13518 }, minPrice = 10000, totalQuantity = 1 }, "
+                      "{ itemKey = { itemID = 8485 }, minPrice = 20000, totalQuantity = 1 } }"))
+    o = out(g, before)
+    assert "fair from asking prices" in o and "confidence 16% (low)" in o, o     # 0.8 x 0.4 x 0.5
+    rows = {r[1]: r[2] for r in ui_rows(ns)}
+    asking = [t for t in rows.values() if "(asking)" in t]
+    assert len(asking) == 1 and "4g 75s (asking)" in asking[0], rows              # only the listing-based row
+    assert o.count("fair from asking prices") == 1, o
+
+
 def main():
     test_search_cancels_scan_first_d057()
     test_dropped_search_is_resent_d057()
@@ -317,6 +338,7 @@ def main():
     test_markets_row_budget_d058()
     test_steals_tab_empty_texts()
     test_confidence_d059()
+    test_listing_basis_d060()
     print("Wuwei panel harness: OK")
 
 

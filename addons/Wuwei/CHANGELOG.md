@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1
+- **Twice as many items watched** (SPEC D-060). The steals list now holds every item that passes the rules (roughly twice the old 300). Two of your recent blue flips were near the bottom of the old list; similar items had been cut off. A scan still takes one click (about 32 queries), best items first, and Search still stops it instantly.
+- **Fewer good steals rejected as "crashing".** A lone cheap listing no longer counts as a crashing market; it takes most listing-hours cheap from at least 3 different auctions. A recipe you just bought cheap at Blackwater would have been rejected before.
+- **Rare recipes and blues with almost no sales** get a fair value from half their typical asking price. Such steals say `(asking)` on the row and `fair from asking prices` in chat, and their confidence is lower.
+
 ## 0.7.0
 - **Search grabs a steal at once** (SPEC D-057). Clicking any Wuwei Search now stops a running steals scan *before* the search goes out. The scan's next query used to knock your search out of the game's queue, leaving the buy frame hanging. If the game drops a search anyway, Wuwei resends it as soon as the auction house is ready (twice at most). Clicking a row in Blizzard's own list stops the scan too, and the Scan button turns into **Stop scan** while it runs.
 - **Best items first:** the scan queries the steals list in order of how often each item has really been mispriced, so the first second of a scan covers the likeliest steals.

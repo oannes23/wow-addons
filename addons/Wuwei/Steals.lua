@@ -101,13 +101,15 @@ local function Valid(e) return type(e) == "table" and type(e.buyMax) == "number"
 --            second / fair, scaled so >= 80% of fair is full support (the market agrees with fair), floor 0.3.
 --            Before it, only the browse row's listing count: 1 listed 0.8, 2 listed 0.6, more 0.4.
 --            The only listing, confirmed by a search: 0.85 (nothing undercuts the resale, nothing confirms fair).
---   fair   : sales behind the fair value (n): >= 20 1.0, >= 8 0.85, >= 3 0.7, else 0.5.
+--   fair   : sales behind the fair value (n): >= 20 1.0, >= 8 0.85, >= 3 0.7, else 0.5. A fair taken from asking
+--            prices (basis "listings", the pipeline's thin rule, D-060) gets 0.4: weaker than any sales count.
 --   resale : sales per day (perDay, from the pipeline): >= 3 1.0, >= 1 0.85, >= 0.3 0.7, else 0.5; unknown 0.75.
 --   haul   : resale at another house 0.9 (a trip, a second cut model).
 -- high >= 60%, med >= 40%, else low. A heuristic, not a calibrated probability: the step values are judgement until
 -- the pipeline backtests them against what cheap listings actually sold for.
 ----------------------------------------------------------------------------------------------------
 Steals.CONF_HIGH, Steals.CONF_MED = 0.6, 0.4
+Steals.CONF_LISTINGS = 0.4 -- fair factor for a listing-based fair (D-060)
 
 local function Step(v, steps, otherwise)
   if type(v) ~= "number" then return otherwise end
@@ -115,7 +117,7 @@ local function Step(v, steps, otherwise)
   return steps[#steps][3]
 end
 
--- f: a found row { price, fair, qty, second?, searched?, n?, perDay?, sell? }. Returns pct (0-100), label, factors.
+-- f: a found row { price, fair, qty, second?, searched?, n?, perDay?, sell?, basis? }. Returns pct (0-100), label, factors.
 function Steals.Confidence(f, house)
   local gap
   if f.searched then
@@ -127,7 +129,7 @@ function Steals.Confidence(f, house)
   else
     gap = (f.qty == 1 and 0.8) or (f.qty == 2 and 0.6) or (type(f.qty) == "number" and 0.4) or 0.6
   end
-  local fair = Step(f.n, { { 20, 1.0 }, { 8, 0.85 }, { 3, 0.7, 0.5 } }, 0.7)
+  local fair = f.basis == "listings" and Steals.CONF_LISTINGS or Step(f.n, { { 20, 1.0 }, { 8, 0.85 }, { 3, 0.7, 0.5 } }, 0.7)
   local resale = Step(f.perDay, { { 3, 1.0 }, { 1, 0.85 }, { 0.3, 0.7, 0.5 } }, 0.75)
   local haul = (type(f.sell) == "number" and house and f.sell ~= house) and 0.9 or 1
   local c = gap * fair * resale * haul
@@ -193,7 +195,8 @@ local function Notify(id, e, price, qty, check, f)
     depth = " · " .. (qty == 1 and L["only listing"] or format(L["%d listed"], qty))
   end
   Say(format(L["STEAL %s listed at %s · fair %s (%d%%) · alert ≤ %s · Search in the Wuwei panel"], ItemLink(id),
-    Money(price), Money(e.fair), pct, Money(e.buyMax)) .. depth .. tail .. (f and (" · " .. ConfText(f)) or ""))
+    Money(price), Money(e.fair), pct, Money(e.buyMax)) .. (e.basis == "listings" and L[" · fair from asking prices"] or "")
+    .. depth .. tail .. (f and (" · " .. ConfText(f)) or ""))
 end
 
 -- One watched item seen at `price` (lowest minPrice over its keys in this reply, `qty` = that row's totalQuantity).
@@ -223,7 +226,7 @@ function Steals.Observe(id, price, key, qty)
   end
   local prev = found[id]
   found[id] = { id = id, price = price, key = key, fair = e.fair, buyMax = e.buyMax, pct = price / e.fair, at = GetTime(),
-    qty = qty, check = check or nil, net = e.net, sell = e.sell, n = e.n, perDay = e.perDay }
+    qty = qty, check = check or nil, net = e.net, sell = e.sell, n = e.n, perDay = e.perDay, basis = e.basis }
   if v and prev and prev.price == price then -- keep what the depth check learned about this listing (D-059)
     found[id].searched, found[id].second = prev.searched, prev.second
   end
@@ -732,7 +735,7 @@ function Steals.OnItemSearch(itemKey)
       f.check = nil
     else
       f = { id = id, price = lowest, key = itemKey, fair = e.fair, buyMax = e.buyMax, pct = lowest / e.fair,
-        at = GetTime(), qty = count, net = e.net, sell = e.sell, n = e.n, perDay = e.perDay }
+        at = GetTime(), qty = count, net = e.net, sell = e.sell, n = e.n, perDay = e.perDay, basis = e.basis }
       found[id] = f
     end
     f.searched, f.second = true, second

@@ -8,6 +8,7 @@ exclude_files = {
   "templates/",
   "addons/*/Data/Plan.lua",   -- generated, gitignored
   "addons/*/Data/Pairs.lua",  -- generated, gitignored
+  "addons/*/Data/Ladder.lua", -- generated, gitignored
 }
 
 read_globals = {
@@ -18,40 +19,54 @@ read_globals = {
   "C_DateAndTime",
   "C_Item",
   "C_Map",
+  "C_MerchantFrame",
   "C_QuestLog",
   "C_SuperTrack",
   "C_Timer",
   "C_TooltipInfo",
+  "C_TradeSkillUI",
   "CreateFrame",
   "Enum",
   "EventUtil",
   "GameTooltip",
   "GetBindingAction",
+  "GetBindingKey",
+  "GetBuildInfo",
+  "GetCurrentBindingSet",
+  "GetCVar",
   "GetInboxHeaderInfo",
   "GetInboxInvoiceInfo",
   "GetInboxNumItems",
-  "GetBindingKey",
-  "GetBuildInfo",
-  "GetCVar",
-  "GetCurrentBindingSet",
   "GetLocale",
+  "GetMerchantItemID",
+  "GetMerchantNumItems",
+  "GetNumTrainerServices",
+  "GetProfessionInfo",
+  "GetProfessions",
   "GetServerTime",
   "GetSubZoneText",
   "GetTime",
+  "GetTrainerServiceCost",
+  "GetTrainerServiceInfo",
+  "GetTrainerServiceSkillReq",
   "GetZoneText",
+  "hooksecurefunc",
   "InCombatLockdown",
+  "issecretvalue",
   "ItemLocation",
   "NUM_TOTAL_EQUIPPED_BAG_SLOTS",
   "QuestObjectiveTracker",
   "SaveBindings",
   "SetBinding",
+  "time",
   "TooltipDataProcessor",
   "UIParent",
   "UnitFactionGroup",
-  "hooksecurefunc",
-  "issecretvalue",
 }
 
+files["addons/Athanor/"] = {
+  globals = { "AthanorDB", "Athanor_OnCompartmentClick", "SLASH_ATHANOR1" },
+}
 files["addons/ItemDataExport/"] = {
   globals = { "ItemDataExportDB", "ItemDataExport_OnCompartmentClick", "SLASH_ITEMDATAEXPORT1" },
 }

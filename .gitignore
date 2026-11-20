@@ -22,3 +22,6 @@ addons/Wuwei/Data/Uses.lua
 
 # StraightHook fish prices, same source (wowf-ah-analysis export-addon)
 addons/StraightHook/Data/Prices.lua
+
+# Athanor ladder (recipes + AH depth), same source (wowf-analysis export-addon, Athanor SPEC)
+addons/Athanor/Data/Ladder.lua

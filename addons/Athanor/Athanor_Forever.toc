@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: Athanor
+## Notes: Profession levelling planner: cheapest expected-cost skill-ups from live AH prices at both houses
+## Author: oannes23
+## Version: 0.1.0
+## IconTexture: Interface\Icons\Trade_Engraving
+## SavedVariables: AthanorDB
+## AddonCompartmentFunc: Athanor_OnCompartmentClick
+
+Locales\enUS.lua
+Data\Ladder.lua
+Planner.lua
+Scan.lua
+Core.lua
+Panel.lua
